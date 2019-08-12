@@ -1,0 +1,16 @@
+INPUT_IMG_SHAPE = (512, 512, 1)
+OUTPUT_IMG_SHAPE = (512, 512, 6)  # half of the input image size
+CROP_SIZE = (128, 128, 6)  # 1/8 of the input image feels better then 1/16
+CROP = False
+BATCH_SIZE = 32
+EPOCHS = 100
+EMBEDDING_DIMS = 5
+HASH_BUCKET_SIZE = 10
+HIDDEN_UNITS = [16, 8]
+# SHUFFLE_BUFFER_SIZE = 1
+SHUFFLE_BUFFER_SIZE = 4_344  # works fine
+# SHUFFLE_BUFFER_SIZE = 487_344  # this will eat all your RAM (Was using 100GB on my system before I killed)
+TENSORBOARD_UPDATE_FREQUENCY = 100
+# TENSORBOARD_UPDATE_FREQUENCY = 30
+DF_LOCATION = 'D:/rxrx1'
+RANDOM_SPLIT_SEED = 55
