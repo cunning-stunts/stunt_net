@@ -60,3 +60,5 @@ target/
 _git2_a32092
 
 \.idea/
+
+*.pkl
