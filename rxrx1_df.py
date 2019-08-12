@@ -4,7 +4,7 @@ import math
 import pandas as pd
 import numpy as np
 
-from consts import DF_LOCATION
+from config import DF_LOCATION
 
 
 def get_filename(i):

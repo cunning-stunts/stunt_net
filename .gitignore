@@ -62,3 +62,7 @@ _git2_a32092
 \.idea/
 
 *.pkl
+
+models/
+
+config\.py
