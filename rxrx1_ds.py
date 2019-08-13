@@ -2,7 +2,7 @@ import os
 
 from tensorflow.python.data.experimental import AUTOTUNE
 
-from config import DF_LOCATION
+from default_config import DF_LOCATION
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
