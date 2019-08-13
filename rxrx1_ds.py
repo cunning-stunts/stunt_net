@@ -2,6 +2,8 @@ import os
 
 from tensorflow.python.data.experimental import AUTOTUNE
 
+from config import DF_LOCATION
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import cv2
@@ -11,7 +13,7 @@ tf.logging.set_verbosity(tf.logging.WARN)
 import numpy as np
 from tensorflow.python.ops.image_ops_impl import convert_image_dtype, ResizeMethod
 
-from consts import INPUT_IMG_SHAPE, OUTPUT_IMG_SHAPE, BATCH_SIZE, CROP_SIZE, CROP, DF_LOCATION
+from consts import INPUT_IMG_SHAPE, OUTPUT_IMG_SHAPE, BATCH_SIZE, CROP_SIZE, CROP
 from rxrx1_df import get_dataframe
 from utils import get_number_of_target_classes
 
@@ -49,8 +51,6 @@ def img_augmentation(x_dict, label):
     x_new = tf.image.random_contrast(x_new, 0.8, 1.2)
     x_new = tf.image.random_flip_left_right(x_new)
     x_new = tf.image.random_flip_up_down(x_new)
-    # x_new = tf.image.random_hue(x_new, 0.06) # requires colour
-    # x_new = tf.image.random_saturation(x_new, 0.1, 1.9) # requires colour
     x_new = add_gausian_noise(x_new, std_dev=0.01)
     x_dict["img"] = x_new
 
@@ -91,18 +91,17 @@ def get_ds(
     ds = tf.data.Dataset.from_tensor_slices((dict(df), one_hot))
     ds = ds.map(
         map_func=load_img,
-        # num_parallel_calls=AUTOTUNE
+        num_parallel_calls=AUTOTUNE
     )
-    ds = ds.apply(tf.data.experimental.ignore_errors())
     if CROP:
         ds = ds.map(
             map_func=crop_image,
-            # num_parallel_calls=AUTOTUNE
+            num_parallel_calls=AUTOTUNE
         )
     if perform_img_augmentation:
         ds = ds.map(
             map_func=img_augmentation,
-            # num_parallel_calls=AUTOTUNE
+            num_parallel_calls=AUTOTUNE
         )
     if shuffle:
         print(f"Filling shuffle buffer {shuffle_buffer_size}, this may take some time...")
@@ -111,10 +110,10 @@ def get_ds(
     if normalise:
         ds = ds.map(
             map_func=normalise_image,
-            # num_parallel_calls=AUTOTUNE
+            num_parallel_calls=AUTOTUNE
         )
     ds = ds.batch(BATCH_SIZE)
-    # ds = ds.prefetch(AUTOTUNE)
+    ds = ds.prefetch(AUTOTUNE)
     return ds.repeat()
 
 

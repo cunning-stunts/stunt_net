@@ -1,6 +1,8 @@
 import os
 import sys
 
+from config import DF_LOCATION
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import pathlib
 import time
@@ -11,7 +13,7 @@ tf.logging.set_verbosity(tf.logging.WARN)
 from sklearn.model_selection import train_test_split
 
 from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, HIDDEN_UNITS, SHUFFLE_BUFFER_SIZE, \
-    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, DF_LOCATION, RANDOM_SPLIT_SEED
+    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED
 from rxrx1_df import get_dataframe
 from rxrx1_ds import get_ds
 from utils import get_random_string, get_number_of_target_classes
@@ -163,7 +165,7 @@ def main(_run_id=None):
     train_ds = get_ds(
         train_df, number_of_target_classes=number_of_target_classes,
         training=True, shuffle_buffer_size=SHUFFLE_BUFFER_SIZE,
-        perform_img_augmentation=False
+        perform_img_augmentation=True
     )
     test_ds = get_ds(
         test_df, number_of_target_classes=number_of_target_classes,
@@ -179,9 +181,6 @@ def main(_run_id=None):
         number_of_target_classes=number_of_target_classes
     )
 
-    # model.summary()
-
-    # tf.keras.utils.plot_model(model, f'models/{run_id}/model.png', show_shapes=True, rankdir='LR')
     train_model(model, train_ds, test_ds, run_id, training_steps_per_epoch, validation_steps_per_epoch)
     run_inferrance()
     export_saved_model(run_id, model, real)
