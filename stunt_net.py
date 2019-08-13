@@ -42,9 +42,11 @@ def wide_and_deep_classifier(
         pooling="max"
     )
 
-    both = tf.keras.layers.concatenate([deep, wide, img_net.output], name='both')
+    output = tf.keras.layers.concatenate([deep, wide, img_net.output], name='both')
 
-    output = tf.keras.layers.Dense(number_of_target_classes, activation='softmax', name='pred')(both)
+    for layerno, numnodes in enumerate(dnn_hidden_units):
+        output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
+    output = tf.keras.layers.Dense(number_of_target_classes, activation='softmax', name='pred')(output)
     model = tf.keras.Model(inputs, output)
     model.compile(
         optimizer='adam',
@@ -76,6 +78,7 @@ def get_features(ds):
     embed = {'embed_{}'.format(colname): tf.feature_column.embedding_column(col, EMBEDDING_DIMS)
              for colname, col in sparse.items()}
     real.update(embed)
+
     # one-hot encode the sparse columns
     sparse = {colname: tf.feature_column.indicator_column(col)
               for colname, col in sparse.items()}
