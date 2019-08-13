@@ -1,7 +1,7 @@
 import os
 import sys
 
-from config import DF_LOCATION
+from default_config import DF_LOCATION
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import pathlib
@@ -13,7 +13,7 @@ tf.logging.set_verbosity(tf.logging.WARN)
 from sklearn.model_selection import train_test_split
 
 from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, HIDDEN_UNITS, SHUFFLE_BUFFER_SIZE, \
-    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED
+    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, CONCAT_HIDDEN_UNITS
 from rxrx1_df import get_dataframe
 from rxrx1_ds import get_ds
 from utils import get_random_string, get_number_of_target_classes
@@ -26,10 +26,10 @@ sess = tf.Session(config=config)
 
 def wide_and_deep_classifier(
         inputs, linear_feature_columns, dnn_feature_columns,
-        dnn_hidden_units, number_of_target_classes
+        number_of_target_classes
 ):
     deep = tf.keras.layers.DenseFeatures(dnn_feature_columns, name='deep_inputs')(inputs)
-    for layerno, numnodes in enumerate(dnn_hidden_units):
+    for layerno, numnodes in enumerate(HIDDEN_UNITS):
         deep = tf.keras.layers.Dense(numnodes, activation='relu', name='dnn_{}'.format(layerno + 1))(deep)
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
 
@@ -44,7 +44,7 @@ def wide_and_deep_classifier(
 
     output = tf.keras.layers.concatenate([deep, wide, img_net.output], name='both')
 
-    for layerno, numnodes in enumerate(dnn_hidden_units):
+    for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
         output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
     output = tf.keras.layers.Dense(number_of_target_classes, activation='softmax', name='pred')(output)
     model = tf.keras.Model(inputs, output)
@@ -180,7 +180,6 @@ def main(_run_id=None):
         inputs,
         linear_feature_columns=sparse.values(),
         dnn_feature_columns=real.values(),
-        dnn_hidden_units=HIDDEN_UNITS,
         number_of_target_classes=number_of_target_classes
     )
 
