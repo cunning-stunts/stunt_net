@@ -40,7 +40,7 @@ def merge_by_channels_and_sites(df):
         aggfunc='first'
     )
 
-    pivoted.columns = ['_'.join(str(s).strip() for s in col if s) for col in pivoted.columns]
+    pivoted.columns = ["img_" + '_'.join(str(s).strip() for s in col if s) for col in pivoted.columns]
     pivoted = pivoted.reset_index(drop=False)
 
     return pivoted
