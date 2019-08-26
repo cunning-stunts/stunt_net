@@ -4,7 +4,7 @@ import math
 import pandas as pd
 import numpy as np
 
-from config import DF_LOCATION
+from default_config import DF_LOCATION
 
 
 def get_filename(i):
@@ -116,6 +116,14 @@ def set_sirna(control_merged, sirnas):
 
 
 if __name__ == '__main__':
-    test_df = get_dataframe(DF_LOCATION, is_test=True)
+
+    cheat_dict = {}
     train_df = get_dataframe(DF_LOCATION, is_test=False)
+    for (cell_line, plate, batch_number), df_g \
+            in train_df.groupby(["cell_line", "plate", "batch_number"]):
+        without_controls = df_g[df_g["well_type"] == ""]
+        unique_sirnas = without_controls["sirna"].unique()
+        cheat_dict[f"{cell_line}_{batch_number}_{plate}"] = unique_sirnas.tolist()
+        print("")
+    test_df = get_dataframe(DF_LOCATION, is_test=True)
     print("")
