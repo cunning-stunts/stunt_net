@@ -99,6 +99,7 @@ def get_ds(
         map_func=load_img,
         num_parallel_calls=AUTOTUNE
     )
+
     if CROP:
         ds = ds.map(
             map_func=crop_image,

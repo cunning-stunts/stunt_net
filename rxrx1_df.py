@@ -1,9 +1,8 @@
-import math
 import os
 
+import math
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
 from default_config import DF_LOCATION
 
@@ -21,12 +20,9 @@ def get_dataframe(ds_location, is_test=False):
     if os.path.exists(filename):
         print("Loading existing df!")
         return pd.read_pickle(filename)
-        # return pickle.load("df.pkl")
 
-    # todo remove this
-    df = pd.read_pickle("something.pkl")
-    # df = get_merged_df(ds_location, folder_name, is_test)
-    df = merge_by_channel(df)
+    df = get_merged_df(ds_location, folder_name, is_test)
+    df = merge_by_channels_and_sites(df)
     if not is_test:
         df["sirna"] = df["sirna"].astype(int)
     else:
@@ -36,55 +32,18 @@ def get_dataframe(ds_location, is_test=False):
     return df
 
 
-def merge_df_by(df, category):
-    img_loc_chan = pd.DataFrame(df.pop(category))
-    img_loc_chan['img_loc'] = df.pop('img_location')
-    df = df.drop_duplicates()
+def merge_by_channels_and_sites(df):
+    pivoted = df.pivot_table(
+        index=["well_column", "well_row", "cell_line", "batch_number", "plate", "id_code"],
+        columns=["site_num", "microscope_channel"],
+        values="img_location",
+        aggfunc='first'
+    )
 
-    channels = img_loc_chan.pop(category).drop_duplicates()
+    pivoted.columns = ['_'.join(str(s).strip() for s in col if s) for col in pivoted.columns]
+    pivoted = pivoted.reset_index(drop=False)
 
-    for i in channels:
-        channel_n = img_loc_chan.loc[img_loc_chan[category].isin([i])]
-        channel_n.rename(columns={'img_loc': f'img_loc_{i}'}, inplace=True)
-        df = df.reset_index(drop=True)
-        channel_n = channel_n.reset_index(drop=True)
-        df = pd.concat([df, channel_n[f'img_loc_{i}']], axis=1)
-    return df
-
-
-def group_by_category(df: pd.DataFrame, category: str):
-    groups = df.groupby("id_code")
-    rows = [process_group(g) for _, g in tqdm(groups)]
-    new_df = pd.DataFrame(rows)
-    return new_df
-
-
-def process_group(g):
-    row = {
-        "well_column": g["well_column"],
-        "well_row": g["well_row"],
-        "cell_line": g["cell_line"],
-        "batch_number": g["batch_number"],
-        "plate": g["plate"],
-        "id_code": g["id_code"],
-    }
-    for s, w in zip(g["site_num"], g["microscope_channel"]):
-        row[f"img_s{s}_w{w}"] = g[(g["site_num"] == s) & (g["microscope_channel"] == w)]["img_location"]
-    return row
-
-
-def merge_by_channel(df):
-    # df = df.sort_values('img_location')
-    group_by_category(df, "microscope_channel")
-
-    df = merge_df_by(df, "microscope_channel")
-    df = merge_df_by(df, "site_num")
-
-    img_loc_chan = pd.DataFrame(df.pop('microscope_channel'))
-    img_loc_chan['img_loc'] = df.pop('img_location')
-    df = df.drop_duplicates()
-
-    return df
+    return pivoted
 
 
 def get_merged_df(ds_location, dataset_type, is_test):
