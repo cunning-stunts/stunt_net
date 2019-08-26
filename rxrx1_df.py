@@ -21,7 +21,7 @@ def get_dataframe(ds_location, is_test=False):
         print("Loading existing df!")
         return pd.read_pickle(filename)
 
-    df = get_merged_df(ds_location, folder_name, is_test)
+    df = get_merged_df(ds_location, folder_name, is_test).reset_index(drop=True)
     df = merge_by_channels_and_sites(df)
     if not is_test:
         df["sirna"] = df["sirna"].astype(int)
@@ -34,7 +34,7 @@ def get_dataframe(ds_location, is_test=False):
 
 def merge_by_channels_and_sites(df):
     pivoted = df.pivot_table(
-        index=["well_column", "well_row", "cell_line", "batch_number", "plate", "id_code"],
+        index=["well_column", "well_row", "cell_line", "batch_number", "plate", "id_code", "sirna"],
         columns=["site_num", "microscope_channel"],
         values="img_location",
         aggfunc='first'
