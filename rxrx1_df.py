@@ -3,7 +3,6 @@ import os
 import math
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 
 from default_config import DF_LOCATION
 
@@ -31,43 +30,6 @@ def get_dataframe(ds_location, is_test=False):
     df = df.replace(np.nan, '', regex=True)
     df.to_pickle(filename)
     return df
-
-
-def merge_df_by(df, category):
-    img_loc_chan = pd.DataFrame(df.pop(category))
-    img_loc_chan['img_loc'] = df.pop('img_location')
-    df = df.drop_duplicates()
-
-    channels = img_loc_chan.pop(category).drop_duplicates()
-
-    for i in channels:
-        channel_n = img_loc_chan.loc[img_loc_chan[category].isin([i])]
-        channel_n.rename(columns={'img_loc': f'img_loc_{i}'}, inplace=True)
-        df = df.reset_index(drop=True)
-        channel_n = channel_n.reset_index(drop=True)
-        df = pd.concat([df, channel_n[f'img_loc_{i}']], axis=1)
-    return df
-
-
-def group_by_category(df: pd.DataFrame):
-    groups = df.groupby("id_code")
-    rows = [process_group(g) for _, g in tqdm(groups)]
-    new_df = pd.DataFrame(rows)
-    return new_df
-
-
-def process_group(g):
-    row = {
-        "well_column": g["well_column"],
-        "well_row": g["well_row"],
-        "cell_line": g["cell_line"],
-        "batch_number": g["batch_number"],
-        "plate": g["plate"],
-        "id_code": g["id_code"],
-    }
-    for s, w in zip(g["site_num"], g["microscope_channel"]):
-        row[f"img_s{s}_w{w}"] = g[(g["site_num"] == s) & (g["microscope_channel"] == w)]["img_location"]
-    return row
 
 
 def merge_by_channels_and_sites(df):
