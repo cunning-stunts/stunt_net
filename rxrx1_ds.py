@@ -20,6 +20,8 @@ from utils import get_number_of_target_classes
 
 def load_img(feature, label):
     final_tensor = None
+    # todo: we need to change this to load all images
+    #  todo: (from site 1 and site 2, and all 6 colour channels)
     channels = range(1, 7)
     for channel in channels:
         img_path_title = f'img_loc_{channel}'

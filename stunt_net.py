@@ -132,6 +132,7 @@ def export_saved_model(run_id, model, feature_columns):
 def run_inference(model, path, run_id):
     print("Loading model..")
     model.load_weights(path)
+
     print("Loading test df...")
     # todo: download data again because some iamges are broken!
     test_df = get_dataframe(DF_LOCATION, is_test=True)[:100]
@@ -147,23 +148,12 @@ def run_inference(model, path, run_id):
 
     classes = np.argmax(predictions, axis=1)
     stacked = np.stack([id_codes, classes], axis=1)
-    print("removing sites")
-    stacked_siteless = []
-    for i in range(0, len(stacked), 2):
-        s1 = stacked[i]
-        s2 = stacked[i + 1]
-        if s1[1] != s2[1] or s1[0] != s2[0]:
-            print(f"calculated difference!: \n{s1}\n{s2}")
-
-        if random.random() < 0.5:
-            stacked_siteless.append(s1)
-        else:
-            stacked_siteless.append(s2)
 
     print("Saving...")
-    np_array_stack = np.array(stacked_siteless)
+    np_array_stack = np.array(stacked)
     predictions_df = pd.DataFrame(np_array_stack, columns=["id_code", "sirna"])
     predictions_df.to_csv("submission.csv", index=False)
+
     print("Uploading to kaggle...")
     subprocess.call([
         "kaggle", "competitions", "submit", "-c",
