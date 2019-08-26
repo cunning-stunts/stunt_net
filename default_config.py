@@ -1,1 +1,1 @@
-DF_LOCATION = 'D:/rxrx1'
+DF_LOCATION = '/home/paul/PycharmProjects/rxrx1/'

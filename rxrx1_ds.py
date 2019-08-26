@@ -22,20 +22,17 @@ def load_img(feature, label):
     final_tensor = None
     # todo: we need to change this to load all images
     #  todo: (from site 1 and site 2, and all 6 colour channels)
-    channels = range(1, 7)
-    for channel in channels:
-        img_path_title = f'img_loc_{channel}'
-        path = feature[img_path_title]
-        image = tf.io.read_file(path)
+    img_keys = [x for x in feature.keys() if x.startswith("img_")]
+    for x in img_keys:
+        image = tf.io.read_file(feature[x])
         image = tf.io.decode_image(image, channels=INPUT_IMG_SHAPE[-1])
         image.set_shape(INPUT_IMG_SHAPE)
         if final_tensor is None:
             final_tensor = image
         else:
             final_tensor = tf.concat([final_tensor, image], axis=2)
+        del feature[x]
 
-    for i in channels:
-        del feature[f"img_loc_{i}"]
     feature["img"] = final_tensor
     return feature, label
 
