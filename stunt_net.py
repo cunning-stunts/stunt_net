@@ -185,10 +185,6 @@ def main(_run_id=None):
     # no need for ID
     df.pop("id_code")
 
-    # df.pop("site_num")
-    # df.pop("microscope_channel")
-    # df.pop("well_type")
-
     train_df, test_df = train_test_split(df, random_state=RANDOM_SPLIT_SEED)
     training_samples = len(train_df.index)
     training_steps_per_epoch = training_samples // BATCH_SIZE

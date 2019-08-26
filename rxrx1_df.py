@@ -1,6 +1,6 @@
-import math
 import os
 
+import math
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -21,12 +21,9 @@ def get_dataframe(ds_location, is_test=False):
     if os.path.exists(filename):
         print("Loading existing df!")
         return pd.read_pickle(filename)
-        # return pickle.load("df.pkl")
 
-    # todo remove this
-    df = pd.read_pickle("something.pkl")
-    # df = get_merged_df(ds_location, folder_name, is_test)
-    df = merge_by_channel(df)
+    df = get_merged_df(ds_location, folder_name, is_test)
+    df = merge_by_channels_and_sites(df)
     if not is_test:
         df["sirna"] = df["sirna"].astype(int)
     else:
@@ -52,7 +49,7 @@ def merge_df_by(df, category):
     return df
 
 
-def group_by_category(df: pd.DataFrame, category: str):
+def group_by_category(df: pd.DataFrame):
     groups = df.groupby("id_code")
     rows = [process_group(g) for _, g in tqdm(groups)]
     new_df = pd.DataFrame(rows)
@@ -73,18 +70,18 @@ def process_group(g):
     return row
 
 
-def merge_by_channel(df):
-    # df = df.sort_values('img_location')
-    group_by_category(df, "microscope_channel")
+def merge_by_channels_and_sites(df):
+    pivoted = df.pivot_table(
+        index=["well_column", "well_row", "cell_line", "batch_number", "plate", "id_code"],
+        columns=["site_num", "microscope_channel"],
+        values="img_location",
+        aggfunc='first'
+    )
 
-    df = merge_df_by(df, "microscope_channel")
-    df = merge_df_by(df, "site_num")
+    pivoted.columns = ['_'.join(str(s).strip() for s in col if s) for col in pivoted.columns]
+    pivoted = pivoted.reset_index(drop=False)
 
-    img_loc_chan = pd.DataFrame(df.pop('microscope_channel'))
-    img_loc_chan['img_loc'] = df.pop('img_location')
-    df = df.drop_duplicates()
-
-    return df
+    return pivoted
 
 
 def get_merged_df(ds_location, dataset_type, is_test):
