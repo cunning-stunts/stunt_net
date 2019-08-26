@@ -14,3 +14,4 @@ SHUFFLE_BUFFER_SIZE = 4_344  # works fine
 TENSORBOARD_UPDATE_FREQUENCY = 500  # setting this too high will slow training!
 # TENSORBOARD_UPDATE_FREQUENCY = 30
 RANDOM_SPLIT_SEED = 55
+TRAIN = False

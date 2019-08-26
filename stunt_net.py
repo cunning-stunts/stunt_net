@@ -8,12 +8,13 @@ import pathlib
 import time
 
 import tensorflow as tf
+import numpy as np
 
 tf.logging.set_verbosity(tf.logging.WARN)
 from sklearn.model_selection import train_test_split
 
 from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, HIDDEN_UNITS, SHUFFLE_BUFFER_SIZE, \
-    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, CONCAT_HIDDEN_UNITS
+    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, CONCAT_HIDDEN_UNITS, TRAIN
 from rxrx1_df import get_dataframe
 from rxrx1_ds import get_ds
 from utils import get_random_string, get_number_of_target_classes
@@ -24,7 +25,7 @@ config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
 
 
-def wide_and_deep_classifier(
+def build_model(
         inputs, linear_feature_columns, dnn_feature_columns,
         number_of_target_classes
 ):
@@ -89,27 +90,30 @@ def get_features(ds):
     return inputs, sparse, real
 
 
-def train_model(model, train_ds, test_ds, run_id, steps_per_epoch, validation_steps_per_epoch):
-    model_path = os.path.join("models", run_id)
+def train_model(
+        model, train_ds, test_ds, steps_per_epoch, validation_steps_per_epoch, model_path, checkpoint_path
+):
     pathlib.Path(model_path).mkdir(parents=True, exist_ok=True)
     cp_callback = tf.keras.callbacks.ModelCheckpoint(
         monitor='val_acc',
-        filepath=os.path.join(model_path, 'model.cpt'),
+        filepath=checkpoint_path,
         save_weights_only=False,
         save_best_only=True,
         verbose=1,
         load_weights_on_restart=True
     )
-    callback = tf.keras.callbacks.TensorBoard(model_path, update_freq=TENSORBOARD_UPDATE_FREQUENCY)
-    callback.set_model(model)
+    tb_callback = tf.keras.callbacks.TensorBoard(model_path, update_freq=TENSORBOARD_UPDATE_FREQUENCY)
+    tb_callback.set_model(model)
 
     history = model.fit(
         train_ds,
         validation_data=test_ds,
         epochs=EPOCHS,
-        steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps_per_epoch,
-        callbacks=[cp_callback, callback]
+        steps_per_epoch=1,
+        # steps_per_epoch=steps_per_epoch,
+        validation_steps=1,
+        # validation_steps=validation_steps_per_epoch,
+        callbacks=[cp_callback, tb_callback]
     )
     return history
 
@@ -122,7 +126,24 @@ def export_saved_model(run_id, model, feature_columns):
     })
 
 
-def run_inferrance():
+def run_inference(model, path):
+    print("Loading model..")
+    model.load_weights(path)
+    print("Loading test df...")
+    test_df = get_dataframe(DF_LOCATION, is_test=True)[:10]
+    id_codes = test_df.pop("id_code")
+
+    test_ds = get_ds(
+        test_df, normalise=True, perform_img_augmentation=False, is_inference=True
+    )
+    print("Predicting...")
+    predictions = model.predict(test_ds)
+    classes = np.argmax(predictions, axis=1)
+    stacked = np.stack([id_codes, classes])
+
+    np.savetxt("submission.csv", stacked, delimiter=',')
+    print("")
+
     # todo:
     # load test dataset (similar to training data, but without SIRNA)
     # run predict with our trained model
@@ -138,6 +159,7 @@ def main(_run_id=None):
     if _run_id is None:
         run_id = get_random_string(8)
     else:
+        print(f"Loading existing model: {_run_id}")
         run_id = _run_id
 
     # no need for ID
@@ -161,8 +183,8 @@ def main(_run_id=None):
     validation_samples: {validation_samples}
     validation_steps_per_epoch: {validation_steps_per_epoch}
     run_id: {run_id}
-    gpu: {tf.test.is_gpu_available()}
-    cuda: {tf.test.is_built_with_cuda()}
+    GPU: {tf.test.is_gpu_available()}
+    CUDA: {tf.test.is_built_with_cuda()}
     """)
 
     train_ds = get_ds(
@@ -176,15 +198,22 @@ def main(_run_id=None):
     )
 
     inputs, sparse, real = get_features(train_ds)
-    model = wide_and_deep_classifier(
+    model = build_model(
         inputs,
         linear_feature_columns=sparse.values(),
         dnn_feature_columns=real.values(),
         number_of_target_classes=number_of_target_classes
     )
 
-    train_model(model, train_ds, test_ds, run_id, training_steps_per_epoch, validation_steps_per_epoch)
-    run_inferrance()
+    model_path = os.path.join("models", run_id)
+    checkpoint_path = os.path.join(model_path, 'model.cpt')
+    if TRAIN:
+        print("Training...")
+        train_model(
+            model, train_ds, test_ds, training_steps_per_epoch,
+            validation_steps_per_epoch, model_path, checkpoint_path
+        )
+    run_inference(model, checkpoint_path)
     export_saved_model(run_id, model, real)
     print("")
 

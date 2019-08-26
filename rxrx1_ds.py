@@ -77,16 +77,22 @@ def crop_image(x_dict, label):
 
 
 def get_ds(
-        df, number_of_target_classes, training=False,
+        df, number_of_target_classes=None, training=False,
         shuffle_buffer_size=10_000,
         shuffle=None, normalise=True,
-        perform_img_augmentation=None
+        perform_img_augmentation=None,
+        is_inference=False
 ):
     if shuffle is None:
         shuffle = True if training else False
     if perform_img_augmentation is None:
         perform_img_augmentation = True if training else False
-    one_hot = tf.one_hot(df.pop("sirna"), number_of_target_classes)
+    if is_inference:
+        one_hot = [0] * len(df.index)
+    else:
+        if number_of_target_classes is None:
+            raise Exception("number_of_target_classes must be specified if generating training dataset")
+        one_hot = tf.one_hot(df.pop("sirna"), number_of_target_classes)
 
     ds = tf.data.Dataset.from_tensor_slices((dict(df), one_hot))
     ds = ds.map(
@@ -114,7 +120,9 @@ def get_ds(
         )
     ds = ds.batch(BATCH_SIZE)
     ds = ds.prefetch(AUTOTUNE)
-    return ds.repeat()
+    if not is_inference:
+        ds = ds.repeat()
+    return ds
 
 
 def show_ds(ds):
@@ -150,18 +158,19 @@ def show_ds(ds):
 
 
 def load_and_show_ds():
-    _df = get_dataframe(DF_LOCATION, is_test=False)
-    number_of_classes = get_number_of_target_classes(_df)
-    _ds = get_ds(
-        _df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=True
+    _train_df = get_dataframe(DF_LOCATION, is_test=False)
+    number_of_classes = get_number_of_target_classes(_train_df)
+    _train_ds = get_ds(
+        _train_df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=True
     )
-    show_ds(_ds)
+    show_ds(_train_ds)
 
-    _df = get_dataframe(DF_LOCATION, is_test=True)
-    _ds = get_ds(
-        _df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=False
+    _test_df = get_dataframe(DF_LOCATION, is_test=True)
+    _test_ds = get_ds(
+        _test_df, normalise=False, perform_img_augmentation=False,
+        is_inference=True
     )
-    show_ds(_ds)
+    show_ds(_test_ds)
 
 
 if __name__ == '__main__':
