@@ -1,4 +1,6 @@
 import os
+import random
+import subprocess
 import sys
 
 from default_config import DF_LOCATION
@@ -9,6 +11,7 @@ import time
 
 import tensorflow as tf
 import numpy as np
+import pandas as pd
 
 tf.logging.set_verbosity(tf.logging.WARN)
 from sklearn.model_selection import train_test_split
@@ -126,11 +129,12 @@ def export_saved_model(run_id, model, feature_columns):
     })
 
 
-def run_inference(model, path):
+def run_inference(model, path, run_id):
     print("Loading model..")
     model.load_weights(path)
     print("Loading test df...")
-    test_df = get_dataframe(DF_LOCATION, is_test=True)[:10]
+    # todo: download data again because some iamges are broken!
+    test_df = get_dataframe(DF_LOCATION, is_test=True)[:100]
     id_codes = test_df.pop("id_code")
 
     test_ds = get_ds(
@@ -138,18 +142,34 @@ def run_inference(model, path):
     )
     print("Predicting...")
     predictions = model.predict(test_ds)
+    print(f"Number of predictions: {len(predictions)}")
+    print(f"Number of id_codes: {len(id_codes.index)}")
+
     classes = np.argmax(predictions, axis=1)
-    stacked = np.stack([id_codes, classes])
+    stacked = np.stack([id_codes, classes], axis=1)
+    print("removing sites")
+    stacked_siteless = []
+    for i in range(0, len(stacked), 2):
+        s1 = stacked[i]
+        s2 = stacked[i + 1]
+        if s1[1] != s2[1] or s1[0] != s2[0]:
+            print(f"calculated difference!: \n{s1}\n{s2}")
 
-    np.savetxt("submission.csv", stacked, delimiter=',')
-    print("")
+        if random.random() < 0.5:
+            stacked_siteless.append(s1)
+        else:
+            stacked_siteless.append(s2)
 
-    # todo:
-    # load test dataset (similar to training data, but without SIRNA)
-    # run predict with our trained model
-    # write to csv
-    # upload to kaggle
-    pass
+    print("Saving...")
+    np_array_stack = np.array(stacked_siteless)
+    predictions_df = pd.DataFrame(np_array_stack, columns=["id_code", "sirna"])
+    predictions_df.to_csv("submission.csv", index=False)
+    print("Uploading to kaggle...")
+    subprocess.call([
+        "kaggle", "competitions", "submit", "-c",
+        "recursion-cellular-image-classification", "-f", "submission.csv", "-m", run_id
+    ])
+    print("Done!")
 
 
 def main(_run_id=None):
@@ -213,8 +233,8 @@ def main(_run_id=None):
             model, train_ds, test_ds, training_steps_per_epoch,
             validation_steps_per_epoch, model_path, checkpoint_path
         )
-    run_inference(model, checkpoint_path)
-    export_saved_model(run_id, model, real)
+    run_inference(model, checkpoint_path, run_id)
+    # export_saved_model(run_id, model, real)
     print("")
 
 
