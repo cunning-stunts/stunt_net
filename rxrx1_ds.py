@@ -97,6 +97,7 @@ def get_ds(
         num_parallel_calls=AUTOTUNE
     )
 
+    # add until new (good) data is downloaded
     ds = ds.apply(tf.data.experimental.ignore_errors())
 
     if CROP:
