@@ -20,8 +20,6 @@ from utils import get_number_of_target_classes
 
 def load_img(feature, label):
     final_tensor = None
-    # todo: we need to change this to load all images
-    #  todo: (from site 1 and site 2, and all 6 colour channels)
     img_keys = [x for x in feature.keys() if x.startswith("img_")]
     for x in img_keys:
         image = tf.io.read_file(feature[x])
@@ -98,6 +96,8 @@ def get_ds(
         map_func=load_img,
         num_parallel_calls=AUTOTUNE
     )
+
+    ds = ds.apply(tf.data.experimental.ignore_errors())
 
     if CROP:
         ds = ds.map(

@@ -22,19 +22,20 @@ def get_dataframe(ds_location, is_test=False):
         return pd.read_pickle(filename)
 
     df = get_merged_df(ds_location, folder_name, is_test).reset_index(drop=True)
-    df = merge_by_channels_and_sites(df)
+    df = merge_by_channels_and_sites(df, is_test)
     if not is_test:
         df["sirna"] = df["sirna"].astype(int)
-    else:
-        df.pop("sirna")
     df = df.replace(np.nan, '', regex=True)
     df.to_pickle(filename)
     return df
 
 
-def merge_by_channels_and_sites(df):
+def merge_by_channels_and_sites(df, is_test):
+    indexes = ["well_column", "well_row", "cell_line", "batch_number", "plate", "id_code"]
+    if not is_test:
+        indexes.append("sirna")
     pivoted = df.pivot_table(
-        index=["well_column", "well_row", "cell_line", "batch_number", "plate", "id_code", "sirna"],
+        index=indexes,
         columns=["site_num", "microscope_channel"],
         values="img_location",
         aggfunc='first'

@@ -112,10 +112,8 @@ def train_model(
         train_ds,
         validation_data=test_ds,
         epochs=EPOCHS,
-        steps_per_epoch=1,
-        # steps_per_epoch=steps_per_epoch,
-        validation_steps=1,
-        # validation_steps=validation_steps_per_epoch,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps_per_epoch,
         callbacks=[cp_callback, tb_callback]
     )
     return history
@@ -135,7 +133,7 @@ def run_inference(model, path, run_id):
 
     print("Loading test df...")
     # todo: download data again because some iamges are broken!
-    test_df = get_dataframe(DF_LOCATION, is_test=True)[:100]
+    test_df = get_dataframe(DF_LOCATION, is_test=True)[:30]
     id_codes = test_df.pop("id_code")
 
     test_ds = get_ds(
@@ -146,12 +144,11 @@ def run_inference(model, path, run_id):
     print(f"Number of predictions: {len(predictions)}")
     print(f"Number of id_codes: {len(id_codes.index)}")
 
-    classes = np.argmax(predictions, axis=1)
+    classes = np.argmax(predictions, axis=1) + 1
     stacked = np.stack([id_codes, classes], axis=1)
 
     print("Saving...")
-    np_array_stack = np.array(stacked)
-    predictions_df = pd.DataFrame(np_array_stack, columns=["id_code", "sirna"])
+    predictions_df = pd.DataFrame(stacked, columns=["id_code", "sirna"])
     predictions_df.to_csv("submission.csv", index=False)
 
     print("Uploading to kaggle...")
@@ -168,9 +165,11 @@ def main(_run_id=None):
 
     if _run_id is None:
         run_id = get_random_string(8)
+        load_model = False
     else:
         print(f"Loading existing model: {_run_id}")
         run_id = _run_id
+        load_model = True
 
     # no need for ID
     df.pop("id_code")
@@ -213,6 +212,14 @@ def main(_run_id=None):
 
     model_path = os.path.join("models", run_id)
     checkpoint_path = os.path.join(model_path, 'model.cpt')
+
+    if load_model:
+        try:
+            print("Loading model...")
+            model.load_weights(checkpoint_path)
+        except Exception as e:
+            print(e)
+
     if TRAIN:
         print("Training...")
         train_model(
