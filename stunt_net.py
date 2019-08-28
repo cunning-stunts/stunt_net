@@ -129,11 +129,13 @@ def export_saved_model(run_id, model, feature_columns):
 
 def run_inference(model, path, run_id):
     print("Loading model..")
-    model.load_weights(path)
+    try:
+        model.load_weights(path)
+    except Exception as e:
+        print(e)
 
     print("Loading test df...")
-    # todo: download data again because some iamges are broken!
-    test_df = get_dataframe(DF_LOCATION, is_test=True)[:30]
+    test_df = get_dataframe(DF_LOCATION, is_test=True)
     id_codes = test_df.pop("id_code")
 
     test_ds = get_ds(

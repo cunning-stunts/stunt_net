@@ -98,7 +98,7 @@ def get_ds(
     )
 
     # add until new (good) data is downloaded
-    ds = ds.apply(tf.data.experimental.ignore_errors())
+    # ds = ds.apply(tf.data.experimental.ignore_errors())
 
     if CROP:
         ds = ds.map(
@@ -159,19 +159,19 @@ def show_ds(ds):
 
 
 def load_and_show_ds():
-    _train_df = get_dataframe(DF_LOCATION, is_test=False)
-    number_of_classes = get_number_of_target_classes(_train_df)
-    _train_ds = get_ds(
-        _train_df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=True
-    )
-    show_ds(_train_ds)
-
     _test_df = get_dataframe(DF_LOCATION, is_test=True)
     _test_ds = get_ds(
         _test_df, normalise=False, perform_img_augmentation=False,
         is_inference=True
     )
     show_ds(_test_ds)
+
+    _train_df = get_dataframe(DF_LOCATION, is_test=False)
+    number_of_classes = get_number_of_target_classes(_train_df)
+    _train_ds = get_ds(
+        _train_df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=True
+    )
+    show_ds(_train_ds)
 
 
 if __name__ == '__main__':
