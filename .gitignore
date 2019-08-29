@@ -68,3 +68,6 @@ models/
 config\.py
 
 submission\.csv
+
+default_config.py
+
