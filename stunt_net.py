@@ -37,14 +37,22 @@ def build_model(
         deep = tf.keras.layers.Dense(numnodes, activation='relu', name='dnn_{}'.format(layerno + 1))(deep)
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
 
-    img_net = tf.keras.applications.InceptionResNetV2(
+    img_net = tf.keras.applications.MobileNetV2(
+        alpha=1.0,
         include_top=False,
         weights=None,
-        # weights='imagenet',
         input_tensor=inputs["img"],
         input_shape=None,
-        pooling="max"
+        pooling="max",
     )
+    # img_net = tf.keras.applications.InceptionResNetV2(
+    #     include_top=False,
+    #     weights=None,
+    #     # weights='imagenet',
+    #     input_tensor=inputs["img"],
+    #     input_shape=None,
+    #     pooling="max"
+    # )
 
     output = tf.keras.layers.concatenate([deep, wide, img_net.output], name='both')
 
