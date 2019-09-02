@@ -34,13 +34,13 @@ def get_dataframe(ds_location, is_test=False):
 
 def merge_by_channels_and_sites(df):
     pivoted = df.pivot_table(
-        index=["well_column", "well_row", "cell_line", "batch_number", "plate", "id_code", "sirna"],
-        columns=["site_num", "microscope_channel"],
+        index=["well_column", "well_row", "cell_line", "batch_number", "site_num", "plate", "id_code", "sirna"],
+        columns=["microscope_channel"],
         values="img_location",
         aggfunc='first'
     )
 
-    pivoted.columns = ["img_" + '_'.join(str(s).strip() for s in col if s) for col in pivoted.columns]
+    pivoted.columns = ['img_' + '_'.join(str(col_name)) for col_name in pivoted.columns]
     pivoted = pivoted.reset_index(drop=False)
 
     return pivoted

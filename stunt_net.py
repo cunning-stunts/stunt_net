@@ -112,10 +112,8 @@ def train_model(
         train_ds,
         validation_data=test_ds,
         epochs=EPOCHS,
-        steps_per_epoch=1,
-        # steps_per_epoch=steps_per_epoch,
-        validation_steps=1,
-        # validation_steps=validation_steps_per_epoch,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps_per_epoch,
         callbacks=[cp_callback, tb_callback]
     )
     return history
@@ -131,7 +129,8 @@ def export_saved_model(run_id, model, feature_columns):
 
 def run_inference(model, path, run_id):
     print("Loading model..")
-    model.load_weights(path)
+    model.load(path)
+
 
     print("Loading test df...")
     # todo: download data again because some iamges are broken!
@@ -213,6 +212,7 @@ def main(_run_id=None):
 
     model_path = os.path.join("models", run_id)
     checkpoint_path = os.path.join(model_path, 'model.cpt')
+
     if TRAIN:
         print("Training...")
         train_model(
