@@ -1,5 +1,6 @@
 scikit-learn
 numpy
 pandas
-cv2
+opencv-python
 tensorflow-gpu
+wandb

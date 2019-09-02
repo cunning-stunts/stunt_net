@@ -10,6 +10,10 @@ import pathlib
 import time
 
 import tensorflow as tf
+import wandb
+from consts import config
+wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
+from wandb.keras import WandbCallback
 import numpy as np
 import pandas as pd
 
@@ -61,10 +65,17 @@ def build_model(
         output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
     output = tf.keras.layers.Dense(number_of_target_classes, activation='softmax', name='pred')(output)
     model = tf.keras.Model(inputs, output)
+
+    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    run_metadata = tf.RunMetadata()
+
     model.compile(
         optimizer='adam',
         loss='categorical_crossentropy',
-        metrics=['accuracy'])
+        metrics=['accuracy'],
+        options=run_options,
+        run_metadata=run_metadata
+    )
     return model
 
 
@@ -114,7 +125,9 @@ def train_model(
         verbose=1,
         load_weights_on_restart=True
     )
-    tb_callback = tf.keras.callbacks.TensorBoard(model_path, update_freq=TENSORBOARD_UPDATE_FREQUENCY)
+    tb_callback = tf.keras.callbacks.TensorBoard(
+        model_path, update_freq=TENSORBOARD_UPDATE_FREQUENCY, profile_batch=0
+    )
     tb_callback.set_model(model)
 
     history = model.fit(
@@ -123,7 +136,7 @@ def train_model(
         epochs=EPOCHS,
         steps_per_epoch=steps_per_epoch,
         validation_steps=validation_steps_per_epoch,
-        callbacks=[cp_callback, tb_callback]
+        callbacks=[cp_callback, tb_callback, WandbCallback()]
     )
     return history
 

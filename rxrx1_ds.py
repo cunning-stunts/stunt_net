@@ -9,6 +9,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import cv2
 import tensorflow as tf
+import wandb
+from consts import config
+wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
 
 tf.logging.set_verbosity(tf.logging.WARN)
 import numpy as np
