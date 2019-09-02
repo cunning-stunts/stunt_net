@@ -25,6 +25,10 @@ def load_img(feature, label):
         image = tf.io.read_file(feature[x])
         image = tf.io.decode_image(image, channels=INPUT_IMG_SHAPE[-1])
         image.set_shape(INPUT_IMG_SHAPE)
+        if not CROP:
+            image = tf.image.resize_images(
+                image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]], method=ResizeMethod.AREA
+            )
         if final_tensor is None:
             final_tensor = image
         else:
@@ -57,10 +61,6 @@ def img_augmentation(x_dict, label):
 def normalise_image(x_dict, label):
     image = x_dict["img"]
     image = tf.image.per_image_standardization(image)
-    if not CROP:
-        image = tf.image.resize_images(
-            image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]], method=ResizeMethod.AREA
-        )
     x_dict["img"] = image
     return x_dict, label
 
@@ -96,6 +96,16 @@ def get_ds(
         map_func=load_img,
         num_parallel_calls=AUTOTUNE
     )
+    # ds = ds.apply(tf.contrib.data.parallel_interleave(
+    #     map_func=load_img,
+    #     cycle_length=AUTOTUNE
+    # ))
+    #
+    # ds = ds.interleave(
+    #     map_func=load_img,
+    #     cycle_length=AUTOTUNE,
+    #     num_parallel_calls=AUTOTUNE
+    # )
 
     # add until new (good) data is downloaded
     # ds = ds.apply(tf.data.experimental.ignore_errors())
@@ -110,19 +120,31 @@ def get_ds(
             map_func=img_augmentation,
             num_parallel_calls=AUTOTUNE
         )
-    if shuffle:
-        print(f"Filling shuffle buffer {shuffle_buffer_size}, this may take some time...")
-        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
 
     if normalise:
-        ds = ds.map(
+        ds = ds.apply(tf.contrib.data.map_and_batch(
             map_func=normalise_image,
+            batch_size=BATCH_SIZE,
             num_parallel_calls=AUTOTUNE
-        )
-    ds = ds.batch(BATCH_SIZE)
+        ))
+    else:
+        ds = ds.batch(BATCH_SIZE)
+
+    #     ds = ds.map(
+    #         map_func=normalise_image,
+    #         num_parallel_calls=AUTOTUNE
+    #     )
+    # ds = ds.batch(BATCH_SIZE)
     ds = ds.prefetch(AUTOTUNE)
-    if not is_inference:
-        ds = ds.repeat()
+
+    if shuffle:
+        print(f"Filling shuffle buffer {shuffle_buffer_size}, this may take some time...")
+        if not is_inference:
+            ds = ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=shuffle_buffer_size))
+        else:
+            ds = ds.shuffle(buffer_size=shuffle_buffer_size)
+    # if not is_inference:
+    #     ds = ds.repeat()
     return ds
 
 
