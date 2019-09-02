@@ -95,7 +95,7 @@ def get_features(ds):
               for colname, col in sparse.items()}
 
     inputs.update({
-        "img": tf.keras.layers.Input(name="img", shape=CROP_SIZE if CROP else OUTPUT_IMG_SHAPE, dtype='float32')
+        "img": tf.keras.layers.Input(name="img", shape=OUTPUT_IMG_SHAPE, dtype='float32')
     })
     return inputs, sparse, real
 
