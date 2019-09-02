@@ -119,7 +119,6 @@ def set_sirna(control_merged, sirnas):
 
 
 if __name__ == '__main__':
-
     cheat_dict = {}
     train_df = get_dataframe(DF_LOCATION, is_test=False)
     # for (cell_line, plate, batch_number), df_g \

@@ -1,5 +1,4 @@
 import os
-import random
 import subprocess
 import sys
 
@@ -205,7 +204,7 @@ def main(_run_id=None):
     train_ds = get_ds(
         train_df, number_of_target_classes=number_of_target_classes,
         training=True, shuffle_buffer_size=SHUFFLE_BUFFER_SIZE,
-        perform_img_augmentation=True
+        perform_img_augmentation=False
     )
     test_ds = get_ds(
         test_df, number_of_target_classes=number_of_target_classes,

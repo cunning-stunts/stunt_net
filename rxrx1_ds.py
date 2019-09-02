@@ -1,4 +1,5 @@
 import os
+from multiprocessing import cpu_count
 
 from tensorflow.python.data.experimental import AUTOTUNE
 
@@ -19,23 +20,25 @@ from utils import get_number_of_target_classes
 
 
 def load_img(feature, label):
-    final_tensor = None
     img_keys = [x for x in feature.keys() if x.startswith("img_")]
+    images = []
     for x in img_keys:
-        image = tf.io.read_file(feature[x])
-        image = tf.io.decode_image(image, channels=INPUT_IMG_SHAPE[-1])
+        image = tf.io.decode_image(tf.io.read_file(feature[x]), channels=INPUT_IMG_SHAPE[-1])
         image.set_shape(INPUT_IMG_SHAPE)
-        if not CROP:
-            image = tf.image.resize_images(
-                image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]], method=ResizeMethod.AREA
+        if CROP:
+            image = tf.image.random_crop(
+                image,
+                size=CROP_SIZE
             )
-        if final_tensor is None:
-            final_tensor = image
         else:
-            final_tensor = tf.concat([final_tensor, image], axis=2)
+            image = tf.image.resize_images(
+                image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]],
+                method=ResizeMethod.AREA
+            )
+        images.append(image)
         del feature[x]
 
-    feature["img"] = final_tensor
+    feature["img"] = tf.concat(images, axis=2)
     return feature, label
 
 
@@ -65,14 +68,6 @@ def normalise_image(x_dict, label):
     return x_dict, label
 
 
-def crop_image(x_dict, label):
-    x_dict["img"] = tf.image.random_crop(
-        x_dict["img"],
-        size=CROP_SIZE
-    )
-    return x_dict, label
-
-
 def get_ds(
         df, number_of_target_classes=None, training=False,
         shuffle_buffer_size=10_000,
@@ -92,9 +87,18 @@ def get_ds(
         one_hot = tf.one_hot(df.pop("sirna"), number_of_target_classes)
 
     ds = tf.data.Dataset.from_tensor_slices((dict(df), one_hot))
+    ds = ds.prefetch(int(BATCH_SIZE * 2.0))
+    ds = ds.cache()
+
+    if shuffle:
+        print(f"Filling shuffle buffer {shuffle_buffer_size}, this may take some time...")
+        if not is_inference:
+            ds = ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=shuffle_buffer_size))
+        else:
+            ds = ds.shuffle(buffer_size=shuffle_buffer_size)
     ds = ds.map(
         map_func=load_img,
-        num_parallel_calls=AUTOTUNE
+        num_parallel_calls=cpu_count()
     )
     # ds = ds.apply(tf.contrib.data.parallel_interleave(
     #     map_func=load_img,
@@ -110,17 +114,11 @@ def get_ds(
     # add until new (good) data is downloaded
     # ds = ds.apply(tf.data.experimental.ignore_errors())
 
-    if CROP:
-        ds = ds.map(
-            map_func=crop_image,
-            num_parallel_calls=AUTOTUNE
-        )
     if perform_img_augmentation:
         ds = ds.map(
             map_func=img_augmentation,
-            num_parallel_calls=AUTOTUNE
+            num_parallel_calls=cpu_count()
         )
-
     if normalise:
         ds = ds.apply(tf.contrib.data.map_and_batch(
             map_func=normalise_image,
@@ -135,14 +133,6 @@ def get_ds(
     #         num_parallel_calls=AUTOTUNE
     #     )
     # ds = ds.batch(BATCH_SIZE)
-    ds = ds.prefetch(AUTOTUNE)
-
-    if shuffle:
-        print(f"Filling shuffle buffer {shuffle_buffer_size}, this may take some time...")
-        if not is_inference:
-            ds = ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=shuffle_buffer_size))
-        else:
-            ds = ds.shuffle(buffer_size=shuffle_buffer_size)
     # if not is_inference:
     #     ds = ds.repeat()
     return ds
