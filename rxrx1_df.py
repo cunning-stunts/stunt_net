@@ -22,19 +22,22 @@ def get_dataframe(ds_location, is_test=False):
         return pd.read_pickle(filename)
 
     df = get_merged_df(ds_location, folder_name, is_test).reset_index(drop=True)
-    df = merge_by_channels_and_sites(df)
+    df = merge_by_channels_and_sites(df, is_test)
     if not is_test:
         df["sirna"] = df["sirna"].astype(int)
     else:
-        df.pop("sirna")
+        df = df[df["well_type"] == "treatment"].reset_index(drop=True)
     df = df.replace(np.nan, '', regex=True)
     df.to_pickle(filename)
     return df
 
 
-def merge_by_channels_and_sites(df):
+def merge_by_channels_and_sites(df, is_test):
+    indexes = ["well_column", "well_row", "cell_line", "batch_number", "site_num", "plate", "id_code", "well_type"]
+    if not is_test:
+        indexes.append("sirna")
     pivoted = df.pivot_table(
-        index=["well_column", "well_row", "cell_line", "batch_number", "site_num", "plate", "id_code", "sirna"],
+        index=indexes,
         columns=["microscope_channel"],
         values="img_location",
         aggfunc='first'
@@ -96,6 +99,7 @@ def add_sirna(sirna_df, metadata_df, controls_df, is_test):
         controls_df[["id_code", "well_type", "sirna"]],
         on="id_code", how="left"
     )
+    control_merged["well_type"].fillna("treatment", inplace=True)
     if not is_test:
         set_sirna(control_merged, sirnas)
     return control_merged
@@ -115,14 +119,13 @@ def set_sirna(control_merged, sirnas):
 
 
 if __name__ == '__main__':
-
     cheat_dict = {}
     train_df = get_dataframe(DF_LOCATION, is_test=False)
-    for (cell_line, plate, batch_number), df_g \
-            in train_df.groupby(["cell_line", "plate", "batch_number"]):
-        without_controls = df_g[df_g["well_type"] == ""]
-        unique_sirnas = without_controls["sirna"].unique()
-        cheat_dict[f"{cell_line}_{batch_number}_{plate}"] = unique_sirnas.tolist()
-        print("")
+    # for (cell_line, plate, batch_number), df_g \
+    #         in train_df.groupby(["cell_line", "plate", "batch_number"]):
+    #     without_controls = df_g[df_g["well_type"] == ""]
+    #     unique_sirnas = without_controls["sirna"].unique()
+    #     cheat_dict[f"{cell_line}_{batch_number}_{plate}"] = unique_sirnas.tolist()
+    #     print("")
     test_df = get_dataframe(DF_LOCATION, is_test=True)
     print("")

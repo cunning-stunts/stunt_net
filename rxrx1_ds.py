@@ -1,4 +1,5 @@
 import os
+from multiprocessing import cpu_count
 
 from tensorflow.python.data.experimental import AUTOTUNE
 
@@ -19,21 +20,25 @@ from utils import get_number_of_target_classes
 
 
 def load_img(feature, label):
-    final_tensor = None
-    # todo: we need to change this to load all images
-    #  todo: (from site 1 and site 2, and all 6 colour channels)
     img_keys = [x for x in feature.keys() if x.startswith("img_")]
+    images = []
     for x in img_keys:
-        image = tf.io.read_file(feature[x])
-        image = tf.io.decode_image(image, channels=INPUT_IMG_SHAPE[-1])
+        image = tf.io.decode_image(tf.io.read_file(feature[x]), channels=INPUT_IMG_SHAPE[-1])
         image.set_shape(INPUT_IMG_SHAPE)
-        if final_tensor is None:
-            final_tensor = image
+        if CROP:
+            image = tf.image.random_crop(
+                image,
+                size=CROP_SIZE
+            )
         else:
-            final_tensor = tf.concat([final_tensor, image], axis=2)
+            image = tf.image.resize_images(
+                image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]],
+                method=ResizeMethod.AREA
+            )
+        images.append(image)
         del feature[x]
 
-    feature["img"] = final_tensor
+    feature["img"] = tf.concat(images, axis=2)
     return feature, label
 
 
@@ -59,19 +64,7 @@ def img_augmentation(x_dict, label):
 def normalise_image(x_dict, label):
     image = x_dict["img"]
     image = tf.image.per_image_standardization(image)
-    if not CROP:
-        image = tf.image.resize_images(
-            image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]], method=ResizeMethod.AREA
-        )
     x_dict["img"] = image
-    return x_dict, label
-
-
-def crop_image(x_dict, label):
-    x_dict["img"] = tf.image.random_crop(
-        x_dict["img"],
-        size=CROP_SIZE
-    )
     return x_dict, label
 
 
@@ -94,34 +87,54 @@ def get_ds(
         one_hot = tf.one_hot(df.pop("sirna"), number_of_target_classes)
 
     ds = tf.data.Dataset.from_tensor_slices((dict(df), one_hot))
+    ds = ds.prefetch(int(BATCH_SIZE * 2.0))
+    ds = ds.cache()
+
+    if shuffle:
+        print(f"Filling shuffle buffer {shuffle_buffer_size}, this may take some time...")
+        if not is_inference:
+            ds = ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=shuffle_buffer_size))
+        else:
+            ds = ds.shuffle(buffer_size=shuffle_buffer_size)
     ds = ds.map(
         map_func=load_img,
-        num_parallel_calls=AUTOTUNE
+        num_parallel_calls=cpu_count()
     )
+    # ds = ds.apply(tf.contrib.data.parallel_interleave(
+    #     map_func=load_img,
+    #     cycle_length=AUTOTUNE
+    # ))
+    #
+    # ds = ds.interleave(
+    #     map_func=load_img,
+    #     cycle_length=AUTOTUNE,
+    #     num_parallel_calls=AUTOTUNE
+    # )
 
-    if CROP:
-        ds = ds.map(
-            map_func=crop_image,
-            num_parallel_calls=AUTOTUNE
-        )
+    # add until new (good) data is downloaded
+    # ds = ds.apply(tf.data.experimental.ignore_errors())
+
     if perform_img_augmentation:
         ds = ds.map(
             map_func=img_augmentation,
-            num_parallel_calls=AUTOTUNE
+            num_parallel_calls=cpu_count()
         )
-    if shuffle:
-        print(f"Filling shuffle buffer {shuffle_buffer_size}, this may take some time...")
-        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
-
     if normalise:
-        ds = ds.map(
+        ds = ds.apply(tf.contrib.data.map_and_batch(
             map_func=normalise_image,
+            batch_size=BATCH_SIZE,
             num_parallel_calls=AUTOTUNE
-        )
-    ds = ds.batch(BATCH_SIZE)
-    ds = ds.prefetch(AUTOTUNE)
-    if not is_inference:
-        ds = ds.repeat()
+        ))
+    else:
+        ds = ds.batch(BATCH_SIZE)
+
+    #     ds = ds.map(
+    #         map_func=normalise_image,
+    #         num_parallel_calls=AUTOTUNE
+    #     )
+    # ds = ds.batch(BATCH_SIZE)
+    # if not is_inference:
+    #     ds = ds.repeat()
     return ds
 
 
@@ -158,19 +171,19 @@ def show_ds(ds):
 
 
 def load_and_show_ds():
-    _train_df = get_dataframe(DF_LOCATION, is_test=False)
-    number_of_classes = get_number_of_target_classes(_train_df)
-    _train_ds = get_ds(
-        _train_df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=True
-    )
-    show_ds(_train_ds)
-
     _test_df = get_dataframe(DF_LOCATION, is_test=True)
     _test_ds = get_ds(
         _test_df, normalise=False, perform_img_augmentation=False,
         is_inference=True
     )
     show_ds(_test_ds)
+
+    _train_df = get_dataframe(DF_LOCATION, is_test=False)
+    number_of_classes = get_number_of_target_classes(_train_df)
+    _train_ds = get_ds(
+        _train_df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=True
+    )
+    show_ds(_train_ds)
 
 
 if __name__ == '__main__':

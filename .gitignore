@@ -90,3 +90,6 @@ venv/bin/python3
 venv/bin/python3.7
 
 venv/pyvenv.cfg
+
+default_config.py
+

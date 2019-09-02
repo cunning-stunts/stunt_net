@@ -1,5 +1,4 @@
 import os
-import random
 import subprocess
 import sys
 
@@ -37,14 +36,22 @@ def build_model(
         deep = tf.keras.layers.Dense(numnodes, activation='relu', name='dnn_{}'.format(layerno + 1))(deep)
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
 
-    img_net = tf.keras.applications.InceptionResNetV2(
+    img_net = tf.keras.applications.MobileNetV2(
+        alpha=1.0,
         include_top=False,
         weights=None,
-        # weights='imagenet',
         input_tensor=inputs["img"],
         input_shape=None,
-        pooling="max"
+        pooling="max",
     )
+    # img_net = tf.keras.applications.InceptionResNetV2(
+    #     include_top=False,
+    #     weights=None,
+    #     # weights='imagenet',
+    #     input_tensor=inputs["img"],
+    #     input_shape=None,
+    #     pooling="max"
+    # )
 
     output = tf.keras.layers.concatenate([deep, wide, img_net.output], name='both')
 
@@ -129,12 +136,14 @@ def export_saved_model(run_id, model, feature_columns):
 
 def run_inference(model, path, run_id):
     print("Loading model..")
-    model.load(path)
+    try:
+        model.load_weights(path)
+    except Exception as e:
+        print(e)
 
 
     print("Loading test df...")
-    # todo: download data again because some iamges are broken!
-    test_df = get_dataframe(DF_LOCATION, is_test=True)[:100]
+    test_df = get_dataframe(DF_LOCATION, is_test=True)
     id_codes = test_df.pop("id_code")
 
     test_ds = get_ds(
@@ -145,12 +154,11 @@ def run_inference(model, path, run_id):
     print(f"Number of predictions: {len(predictions)}")
     print(f"Number of id_codes: {len(id_codes.index)}")
 
-    classes = np.argmax(predictions, axis=1)
+    classes = np.argmax(predictions, axis=1) + 1
     stacked = np.stack([id_codes, classes], axis=1)
 
     print("Saving...")
-    np_array_stack = np.array(stacked)
-    predictions_df = pd.DataFrame(np_array_stack, columns=["id_code", "sirna"])
+    predictions_df = pd.DataFrame(stacked, columns=["id_code", "sirna"])
     predictions_df.to_csv("submission.csv", index=False)
 
     print("Uploading to kaggle...")
@@ -167,9 +175,11 @@ def main(_run_id=None):
 
     if _run_id is None:
         run_id = get_random_string(8)
+        load_model = False
     else:
         print(f"Loading existing model: {_run_id}")
         run_id = _run_id
+        load_model = True
 
     # no need for ID
     df.pop("id_code")
@@ -195,7 +205,7 @@ def main(_run_id=None):
     train_ds = get_ds(
         train_df, number_of_target_classes=number_of_target_classes,
         training=True, shuffle_buffer_size=SHUFFLE_BUFFER_SIZE,
-        perform_img_augmentation=True
+        perform_img_augmentation=False
     )
     test_ds = get_ds(
         test_df, number_of_target_classes=number_of_target_classes,
@@ -212,6 +222,13 @@ def main(_run_id=None):
 
     model_path = os.path.join("models", run_id)
     checkpoint_path = os.path.join(model_path, 'model.cpt')
+
+    if load_model:
+        try:
+            print("Loading model...")
+            model.load_weights(checkpoint_path)
+        except Exception as e:
+            print(e)
 
     if TRAIN:
         print("Training...")
