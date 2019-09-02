@@ -5,6 +5,7 @@ import sys
 from default_config import DF_LOCATION
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 import pathlib
 import time
 
@@ -37,12 +38,12 @@ def build_model(
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
 
     img_net = tf.keras.applications.MobileNetV2(
-        alpha=1.0,
+        alpha=1.4,
         include_top=False,
         weights=None,
         input_tensor=inputs["img"],
         input_shape=None,
-        pooling="max",
+        # pooling="max",
     )
     # img_net = tf.keras.applications.InceptionResNetV2(
     #     include_top=False,
@@ -53,7 +54,8 @@ def build_model(
     #     pooling="max"
     # )
 
-    output = tf.keras.layers.concatenate([deep, wide, img_net.output], name='both')
+    flattened_convnet_output = tf.keras.layers.Flatten()(img_net.output)
+    output = tf.keras.layers.concatenate([deep, wide, flattened_convnet_output], name='both')
 
     for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
         output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
