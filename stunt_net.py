@@ -11,9 +11,9 @@ import time
 
 import tensorflow as tf
 import wandb
-from consts import config
-wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
-from wandb.keras import WandbCallback
+# from consts import config
+# wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
+# from wandb.keras import WandbCallback
 import numpy as np
 import pandas as pd
 
@@ -136,7 +136,7 @@ def train_model(
         epochs=EPOCHS,
         steps_per_epoch=steps_per_epoch,
         validation_steps=validation_steps_per_epoch,
-        callbacks=[cp_callback, tb_callback, WandbCallback()]
+        callbacks=[cp_callback, tb_callback]
     )
     return history
 

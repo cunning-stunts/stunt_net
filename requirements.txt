@@ -3,4 +3,4 @@ numpy
 pandas
 opencv-python
 tensorflow-gpu
-wandb
+# wandb
