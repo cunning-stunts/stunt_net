@@ -42,12 +42,13 @@ def build_model(
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
 
     img_net = tf.keras.applications.MobileNetV2(
+        # alpha=0.7,
         alpha=1.4,
         include_top=False,
         weights=None,
         input_tensor=inputs["img"],
         input_shape=None,
-        # pooling="max",
+        pooling="max",
     )
     # img_net = tf.keras.applications.InceptionResNetV2(
     #     include_top=False,
@@ -61,20 +62,20 @@ def build_model(
     flattened_convnet_output = tf.keras.layers.Flatten()(img_net.output)
     output = tf.keras.layers.concatenate([deep, wide, flattened_convnet_output], name='both')
 
-    for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
-        output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
+    # for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
+    #     output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
     output = tf.keras.layers.Dense(number_of_target_classes, activation='softmax', name='pred')(output)
     model = tf.keras.Model(inputs, output)
 
-    run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-    run_metadata = tf.RunMetadata()
+    # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    # run_metadata = tf.RunMetadata()
 
     model.compile(
         optimizer='adam',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
-        options=run_options,
-        run_metadata=run_metadata
+        # options=run_options,
+        # run_metadata=run_metadata
     )
     return model
 
@@ -219,7 +220,7 @@ def main(_run_id=None):
     train_ds = get_ds(
         train_df, number_of_target_classes=number_of_target_classes,
         training=True, shuffle_buffer_size=SHUFFLE_BUFFER_SIZE,
-        perform_img_augmentation=False
+        perform_img_augmentation=True
     )
     test_ds = get_ds(
         test_df, number_of_target_classes=number_of_target_classes,
