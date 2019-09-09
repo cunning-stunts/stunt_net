@@ -5,12 +5,11 @@ import sys
 from default_config import DF_LOCATION
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # For CPU
 import pathlib
 import time
 
 import tensorflow as tf
-import wandb
 # from consts import config
 # wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
 # from wandb.keras import WandbCallback
@@ -21,7 +20,7 @@ tf.logging.set_verbosity(tf.logging.WARN)
 from sklearn.model_selection import train_test_split
 
 from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, HIDDEN_UNITS, SHUFFLE_BUFFER_SIZE, \
-    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, CONCAT_HIDDEN_UNITS, TRAIN
+    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, TRAIN
 from rxrx1_df import get_dataframe
 from rxrx1_ds import get_ds
 from utils import get_random_string, get_number_of_target_classes
@@ -169,7 +168,7 @@ def run_inference(model, path, run_id):
     print(f"Number of predictions: {len(predictions)}")
     print(f"Number of id_codes: {len(id_codes.index)}")
 
-    classes = np.argmax(predictions, axis=1) + 1
+    classes = np.argmax(predictions, axis=1)
     stacked = np.stack([id_codes, classes], axis=1)
 
     print("Saving...")
