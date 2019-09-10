@@ -32,13 +32,19 @@ def get_dataframe(ds_location, is_test=False):
     return df
 
 
+def get_image_stats(stats_loc: str):
+    filename = os.path.join(stats_loc, 'pixel_stats.csv')
+    stats_df = pd.read_csv(filename)
+    return stats_df
+
+
 def merge_by_channels_and_sites(df, is_test):
-    indexes = ["well_column", "well_row", "cell_line", "batch_number", "site_num", "plate", "id_code", "well_type"]
+    indexes = ["well_column", "well_row", "cell_line", "batch_number", "site", "plate", "id_code", "well_type"]
     if not is_test:
         indexes.append("sirna")
     pivoted = df.pivot_table(
         index=indexes,
-        columns=["microscope_channel"],
+        columns=["channel"],
         values="img_location",
         aggfunc='first'
     )
@@ -52,6 +58,7 @@ def merge_by_channels_and_sites(df, is_test):
 def get_merged_df(ds_location, dataset_type, is_test):
     sirna_df = pd.read_csv(os.path.join(ds_location, f"{dataset_type}.csv"))
     controls_df = pd.read_csv(os.path.join(ds_location, f"{dataset_type}_controls.csv"))
+    pixel_stats = get_image_stats(ds_location)
     data = []
     tests = [os.path.join(ds_location, dataset_type, t) for t in os.listdir(os.path.join(ds_location, dataset_type))]
     for t in tests:
@@ -72,20 +79,29 @@ def get_merged_df(ds_location, dataset_type, is_test):
                 cell_line = test.split("-")[0]
                 batch_number = int(test.split("-")[1])
                 plate = int(str(get_filename(p)).replace("Plate", ""))
+                id_code = f"{cell_line}-{batch_number:02d}_{plate}_{well_column}{well_row:02d}"
 
                 data.append({
                     "well_column": well_column,
                     "well_row": well_row,
-                    "site_num": site,
-                    "microscope_channel": microscope_channel,
+                    "site": site,
+                    "channel": microscope_channel,
                     "cell_line": cell_line,
                     "batch_number": batch_number,
                     "plate": plate,
                     "img_location": i,
-                    "id_code": f"{cell_line}-{batch_number:02d}_{plate}_{well_column}{well_row:02d}"
+                    "id_code": id_code,
                 })
 
-    return add_sirna(sirna_df, pd.DataFrame(data), controls_df, is_test)
+    data_df = pd.DataFrame(data)
+    data_df = pd.merge(
+        data_df,
+        pixel_stats[["id_code", 'site', 'channel', 'mean', 'std', 'median', 'min', 'max']],
+        on=["id_code", 'site', 'channel'],
+        how="left"
+    )
+
+    return add_sirna(sirna_df, data_df, controls_df, is_test)
 
 
 def add_sirna(sirna_df, metadata_df, controls_df, is_test):
