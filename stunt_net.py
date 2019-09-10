@@ -2,6 +2,8 @@ import os
 import subprocess
 import sys
 
+from tensorflow.python.keras.backend import set_session
+
 from default_config import DF_LOCATION
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -29,6 +31,7 @@ from utils import get_random_string, get_number_of_target_classes
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
+set_session(sess)
 
 
 def build_model(
@@ -37,7 +40,10 @@ def build_model(
 ):
     deep = tf.keras.layers.DenseFeatures(dnn_feature_columns, name='deep_inputs')(inputs)
     for layerno, numnodes in enumerate(HIDDEN_UNITS):
-        deep = tf.keras.layers.Dense(numnodes, activation='relu', name='dnn_{}'.format(layerno + 1))(deep)
+        deep = tf.keras.layers.Dense(
+            numnodes, activation='relu', name='dnn_{}'.format(layerno + 1),
+            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+        )(deep)
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
 
     img_net = tf.keras.applications.MobileNetV2(
@@ -63,7 +69,10 @@ def build_model(
 
     # for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
     #     output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
-    output = tf.keras.layers.Dense(number_of_target_classes, activation='softmax', name='pred')(output)
+    output = tf.keras.layers.Dense(
+        number_of_target_classes, activation='softmax', name='pred',
+        kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+    )(output)
     model = tf.keras.Model(inputs, output)
 
     # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
