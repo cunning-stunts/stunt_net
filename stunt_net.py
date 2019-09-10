@@ -42,13 +42,13 @@ def build_model(
     for layerno, numnodes in enumerate(HIDDEN_UNITS):
         deep = tf.keras.layers.Dense(
             numnodes, activation='relu', name='dnn_{}'.format(layerno + 1),
-            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+            #kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
         )(deep)
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
 
     img_net = tf.keras.applications.MobileNetV2(
-        # alpha=0.7,
-        alpha=1.4,
+        alpha=0.7,
+        #alpha=1.4,
         include_top=False,
         weights=None,
         input_tensor=inputs["img"],
