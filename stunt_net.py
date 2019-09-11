@@ -2,13 +2,19 @@ import os
 import subprocess
 import sys
 
+from tensorflow.python.keras.backend import set_session
+
 from default_config import DF_LOCATION
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # For CPU
 import pathlib
 import time
 
 import tensorflow as tf
+# from consts import config
+# wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
+# from wandb.keras import WandbCallback
 import numpy as np
 import pandas as pd
 
@@ -16,7 +22,7 @@ tf.logging.set_verbosity(tf.logging.WARN)
 from sklearn.model_selection import train_test_split
 
 from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, HIDDEN_UNITS, SHUFFLE_BUFFER_SIZE, \
-    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, CONCAT_HIDDEN_UNITS, TRAIN
+    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, TRAIN
 from rxrx1_df import get_dataframe
 from rxrx1_ds import get_ds
 from utils import get_random_string, get_number_of_target_classes
@@ -25,6 +31,7 @@ from utils import get_random_string, get_number_of_target_classes
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
+set_session(sess)
 
 
 def build_model(
@@ -33,11 +40,15 @@ def build_model(
 ):
     deep = tf.keras.layers.DenseFeatures(dnn_feature_columns, name='deep_inputs')(inputs)
     for layerno, numnodes in enumerate(HIDDEN_UNITS):
-        deep = tf.keras.layers.Dense(numnodes, activation='relu', name='dnn_{}'.format(layerno + 1))(deep)
+        deep = tf.keras.layers.Dense(
+            numnodes, activation='relu', name='dnn_{}'.format(layerno + 1),
+            #kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+        )(deep)
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
 
     img_net = tf.keras.applications.MobileNetV2(
-        alpha=1.0,
+        alpha=0.7,
+        #alpha=1.4,
         include_top=False,
         weights=None,
         input_tensor=inputs["img"],
@@ -53,16 +64,27 @@ def build_model(
     #     pooling="max"
     # )
 
-    output = tf.keras.layers.concatenate([deep, wide, img_net.output], name='both')
+    flattened_convnet_output = tf.keras.layers.Flatten()(img_net.output)
+    output = tf.keras.layers.concatenate([deep, wide, flattened_convnet_output], name='both')
 
-    for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
-        output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
-    output = tf.keras.layers.Dense(number_of_target_classes, activation='softmax', name='pred')(output)
+    # for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
+    #     output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
+    output = tf.keras.layers.Dense(
+        number_of_target_classes, activation='softmax', name='pred',
+        kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+    )(output)
     model = tf.keras.Model(inputs, output)
+
+    # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    # run_metadata = tf.RunMetadata()
+
     model.compile(
         optimizer='adam',
         loss='categorical_crossentropy',
-        metrics=['accuracy'])
+        metrics=['accuracy'],
+        # options=run_options,
+        # run_metadata=run_metadata
+    )
     return model
 
 
@@ -112,7 +134,9 @@ def train_model(
         verbose=1,
         load_weights_on_restart=True
     )
-    tb_callback = tf.keras.callbacks.TensorBoard(model_path, update_freq=TENSORBOARD_UPDATE_FREQUENCY)
+    tb_callback = tf.keras.callbacks.TensorBoard(
+        model_path, update_freq=TENSORBOARD_UPDATE_FREQUENCY, profile_batch=0
+    )
     tb_callback.set_model(model)
 
     history = model.fit(
@@ -154,7 +178,7 @@ def run_inference(model, path, run_id):
     print(f"Number of predictions: {len(predictions)}")
     print(f"Number of id_codes: {len(id_codes.index)}")
 
-    classes = np.argmax(predictions, axis=1) + 1
+    classes = np.argmax(predictions, axis=1)
     stacked = np.stack([id_codes, classes], axis=1)
 
     print("Saving...")
@@ -205,7 +229,7 @@ def main(_run_id=None):
     train_ds = get_ds(
         train_df, number_of_target_classes=number_of_target_classes,
         training=True, shuffle_buffer_size=SHUFFLE_BUFFER_SIZE,
-        perform_img_augmentation=False
+        perform_img_augmentation=True
     )
     test_ds = get_ds(
         test_df, number_of_target_classes=number_of_target_classes,

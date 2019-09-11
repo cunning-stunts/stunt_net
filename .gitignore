@@ -93,3 +93,5 @@ venv/pyvenv.cfg
 
 default_config.py
 
+
+wandb/

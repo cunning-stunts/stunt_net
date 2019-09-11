@@ -9,6 +9,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import cv2
 import tensorflow as tf
+# import wandb
+# from consts import config
+# wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
 
 tf.logging.set_verbosity(tf.logging.WARN)
 import numpy as np
@@ -21,25 +24,25 @@ from utils import get_number_of_target_classes
 
 def load_img(feature, label):
     img_keys = [x for x in feature.keys() if x.startswith("img_")]
-    images = []
-    for x in img_keys:
-        image = tf.io.decode_image(tf.io.read_file(feature[x]), channels=INPUT_IMG_SHAPE[-1])
-        image.set_shape(INPUT_IMG_SHAPE)
-        if CROP:
-            image = tf.image.random_crop(
-                image,
-                size=CROP_SIZE
-            )
-        else:
-            image = tf.image.resize_images(
-                image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]],
-                method=ResizeMethod.AREA
-            )
-        images.append(image)
-        del feature[x]
-
-    feature["img"] = tf.concat(images, axis=2)
+    feature["img"] = tf.concat([load_img_single(feature, x) for x in img_keys], axis=2)
+    [feature.pop(x) for x in img_keys]
     return feature, label
+
+
+def load_img_single(feature, x):
+    image = tf.io.decode_image(tf.io.read_file(feature[x]), channels=INPUT_IMG_SHAPE[-1])
+    image.set_shape(INPUT_IMG_SHAPE)
+    if CROP:
+        image = tf.image.random_crop(
+            image,
+            size=CROP_SIZE
+        )
+    else:
+        image = tf.image.resize_images(
+            image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]],
+            method=ResizeMethod.AREA
+        )
+    return image
 
 
 def add_gausian_noise(x_new, std_dev):
@@ -88,7 +91,6 @@ def get_ds(
 
     ds = tf.data.Dataset.from_tensor_slices((dict(df), one_hot))
     ds = ds.prefetch(int(BATCH_SIZE * 2.0))
-    ds = ds.cache()
 
     if shuffle:
         print(f"Filling shuffle buffer {shuffle_buffer_size}, this may take some time...")
@@ -119,6 +121,10 @@ def get_ds(
             map_func=img_augmentation,
             num_parallel_calls=cpu_count()
         )
+
+    # todo:
+    # perform augmentation of column features
+
     if normalise:
         ds = ds.apply(tf.contrib.data.map_and_batch(
             map_func=normalise_image,
