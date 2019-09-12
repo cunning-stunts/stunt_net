@@ -32,6 +32,7 @@ def load_img(feature, label):
 def load_img_single(feature, x):
     image = tf.io.decode_image(tf.io.read_file(feature[x]), channels=INPUT_IMG_SHAPE[-1])
     image.set_shape(INPUT_IMG_SHAPE)
+    image = tf.image.per_image_standardization(image)
     if CROP:
         image = tf.image.random_crop(
             image,
@@ -74,7 +75,7 @@ def normalise_image(x_dict, label):
 def get_ds(
         df, number_of_target_classes=None, training=False,
         shuffle_buffer_size=10_000,
-        shuffle=None, normalise=True,
+        shuffle=None, normalise=False,
         perform_img_augmentation=None,
         is_inference=False
 ):
