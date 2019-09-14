@@ -45,11 +45,11 @@ def merge_by_channels_and_sites(df, is_test):
     pivoted = df.pivot_table(
         index=indexes,
         columns=["channel"],
-        values="img_location",
+        values=["img_location", 'mean', 'std', 'median', 'min', 'max'],
         aggfunc='first'
     )
 
-    pivoted.columns = ['img_' + '_'.join(str(col_name)) for col_name in pivoted.columns]
+    pivoted.columns = [col_name[0] + '_' + str(col_name[1]) for col_name in pivoted.columns]
     pivoted = pivoted.reset_index(drop=False)
 
     return pivoted
