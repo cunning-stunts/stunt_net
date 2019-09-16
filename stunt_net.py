@@ -42,7 +42,7 @@ def build_model(
     for layerno, numnodes in enumerate(HIDDEN_UNITS):
         deep = tf.keras.layers.Dense(
             numnodes, activation='relu', name='dnn_{}'.format(layerno + 1),
-            #kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
         )(deep)
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
 
@@ -70,8 +70,7 @@ def build_model(
     # for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
     #     output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
     output = tf.keras.layers.Dense(
-        number_of_target_classes, activation='softmax', name='pred',
-        kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+        number_of_target_classes, activation='softmax', name='pred'
     )(output)
     model = tf.keras.Model(inputs, output)
 

@@ -155,12 +155,7 @@ def show_ds(ds):
                 x1, y1 = sess.run([x, y])
                 imgs = x1["img"]
                 for img, y2 in zip(imgs, y1):  # batch size
-                    #
-                    # BEAR IN MIND
-                    # THE ACTUAL CLASS ID IS 1..N
-                    # BUT ARGMAX WILL RETURN 0..N-1
-                    #
-                    argmax = np.argmax(y2) + 1
+                    argmax = np.argmax(y2)
                     print(f"y2: {argmax}")
                     stacked = []
                     for i in range(0, 6, 3):
@@ -183,14 +178,14 @@ def load_and_show_ds():
         _test_df, normalise=False, perform_img_augmentation=False,
         is_inference=True
     )
-    show_ds(_test_ds)
+    # show_ds(_test_ds)
 
     _train_df = get_dataframe(DF_LOCATION, is_test=False)
     number_of_classes = get_number_of_target_classes(_train_df)
     _train_ds = get_ds(
         _train_df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=True
     )
-    show_ds(_train_ds)
+    # show_ds(_train_ds)
 
 
 if __name__ == '__main__':
