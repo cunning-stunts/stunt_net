@@ -42,9 +42,14 @@ def build_model(
     for layerno, numnodes in enumerate(HIDDEN_UNITS):
         deep = tf.keras.layers.Dense(
             numnodes, activation='relu', name='dnn_{}'.format(layerno + 1),
-            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+            # kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
         )(deep)
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
+    deepnwide = tf.keras.layers.concatenate([deep, wide], name="deepnwide")
+    deepnwide = tf.keras.layers.Dense(
+            2_000, activation='relu', name='deep_n_wide_1',
+            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+    )(deepnwide)
 
     img_net = tf.keras.applications.MobileNetV2(
         alpha=0.7,
@@ -65,7 +70,7 @@ def build_model(
     # )
 
     flattened_convnet_output = tf.keras.layers.Flatten()(img_net.output)
-    output = tf.keras.layers.concatenate([deep, wide, flattened_convnet_output], name='both')
+    output = tf.keras.layers.concatenate([deepnwide, flattened_convnet_output], name='both')
 
     # for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
     #     output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
