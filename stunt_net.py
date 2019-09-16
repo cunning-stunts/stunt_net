@@ -38,41 +38,40 @@ def build_model(
         inputs, linear_feature_columns, dnn_feature_columns,
         number_of_target_classes
 ):
-    deep = tf.keras.layers.DenseFeatures(dnn_feature_columns, name='deep_inputs')(inputs)
-    for layerno, numnodes in enumerate(HIDDEN_UNITS):
-        deep = tf.keras.layers.Dense(
-            numnodes, activation='relu', name='dnn_{}'.format(layerno + 1),
-            #kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
-        )(deep)
-    wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
+    # deep = tf.keras.layers.DenseFeatures(dnn_feature_columns, name='deep_inputs')(inputs)
+    # for layerno, numnodes in enumerate(HIDDEN_UNITS):
+    #     deep = tf.keras.layers.Dense(
+    #         numnodes, activation='relu', name='dnn_{}'.format(layerno + 1),
+    #         #kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+    #     )(deep)
+    # wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
 
-    img_net = tf.keras.applications.MobileNetV2(
-        alpha=0.7,
-        #alpha=1.4,
-        include_top=False,
-        weights=None,
-        input_tensor=inputs["img"],
-        input_shape=None,
-        pooling="max",
-    )
-    # img_net = tf.keras.applications.InceptionResNetV2(
+    # img_net = tf.keras.applications.MobileNetV2(
+    #     alpha=0.7,
+    #     #alpha=1.4,
     #     include_top=False,
     #     weights=None,
-    #     # weights='imagenet',
     #     input_tensor=inputs["img"],
     #     input_shape=None,
     #     pooling="max"
     # )
+    img_net = tf.keras.applications.InceptionResNetV2(
+        include_top=False,
+        weights=None,
+        input_tensor=inputs["img"],
+        input_shape=None,
+        pooling="max"
+    )
 
-    flattened_convnet_output = tf.keras.layers.Flatten()(img_net.output)
-    output = tf.keras.layers.concatenate([deep, wide, flattened_convnet_output], name='both')
+    # flattened_convnet_output = tf.keras.layers.Flatten()(img_net.output)
+    # output = tf.keras.layers.concatenate([deep, wide, flattened_convnet_output], name='both')
 
     # for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
     #     output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
     output = tf.keras.layers.Dense(
         number_of_target_classes, activation='softmax', name='pred',
         kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
-    )(output)
+    )(img_net.output)
     model = tf.keras.Model(inputs, output)
 
     # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -84,6 +83,39 @@ def build_model(
         metrics=['accuracy'],
         # options=run_options,
         # run_metadata=run_metadata
+    )
+    return model
+
+
+def build_deep_wide(
+        inputs, linear_feature_columns, dnn_feature_columns,
+        number_of_target_classes, model: tf.keras.Model
+):
+    deep = tf.keras.layers.DenseFeatures(dnn_feature_columns, name='deep_inputs')(inputs)
+    for layerno, numnodes in enumerate(HIDDEN_UNITS):
+        deep = tf.keras.layers.Dense(
+            numnodes, activation='relu', name='dnn_{}'.format(layerno + 1),
+            #kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+        )(deep)
+    wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
+
+    img_net_1 = model(inputs["img"])
+    img_net_2 = model(inputs["img"])
+
+    flattened_convnet_output = tf.keras.layers.Flatten()(img_net_1.output)
+    flattened_convnet_output_2 = tf.keras.layers.Flatten()(img_net_2.output)
+    output = tf.keras.layers.concatenate([deep, wide, flattened_convnet_output, flattened_convnet_output_2], name='both')
+
+    output = tf.keras.layers.Dense(
+        number_of_target_classes, activation='softmax', name='pred',
+        kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+    )(output)
+    model = tf.keras.Model(inputs, output)
+
+    model.compile(
+        optimizer='adam',
+        loss='categorical_crossentropy',
+        metrics=['accuracy']
     )
     return model
 
@@ -171,7 +203,10 @@ def run_inference(model, path, run_id):
     id_codes = test_df.pop("id_code")
 
     test_ds = get_ds(
-        test_df, normalise=True, perform_img_augmentation=False, is_inference=True
+        test_df,
+        normalise=True,
+        perform_img_augmentation=False,
+        is_inference=True
     )
     print("Predicting...")
     predictions = model.predict(test_ds)
@@ -226,6 +261,11 @@ def main(_run_id=None):
     CUDA: {tf.test.is_built_with_cuda()}
     """)
 
+    img_names = ['sirna'] + ['img_location_' + str(x) for x in range(1, 7)]
+
+    train_df = train_df[img_names]
+    test_df = test_df[img_names]
+
     train_ds = get_ds(
         train_df, number_of_target_classes=number_of_target_classes,
         training=True, shuffle_buffer_size=SHUFFLE_BUFFER_SIZE,
@@ -260,6 +300,23 @@ def main(_run_id=None):
             model, train_ds, test_ds, training_steps_per_epoch,
             validation_steps_per_epoch, model_path, checkpoint_path
         )
+
+    bigger_model = build_deep_wide(
+        inputs,
+        linear_feature_columns=sparse.values(),
+        dnn_feature_columns=real.values(),
+        number_of_target_classes=number_of_target_classes,
+        model=model
+    )
+
+    bigger_model_path = os.path.join("bigger_models", run_id)
+    bigger_checkpoint_path = os.path.join(model_path, 'bigger_model.cpt')
+
+    train_model(
+        bigger_model, train_ds, test_ds, training_steps_per_epoch,
+        validation_steps_per_epoch, bigger_model_path, bigger_checkpoint_path
+    )
+
     run_inference(model, checkpoint_path, run_id)
     # export_saved_model(run_id, model, real)
     print("")

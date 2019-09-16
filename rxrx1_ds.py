@@ -17,7 +17,7 @@ tf.logging.set_verbosity(tf.logging.WARN)
 import numpy as np
 from tensorflow.python.ops.image_ops_impl import convert_image_dtype, ResizeMethod
 
-from consts import INPUT_IMG_SHAPE, OUTPUT_IMG_SHAPE, BATCH_SIZE, CROP_SIZE, CROP
+from consts import INPUT_IMG_SHAPE, OUTPUT_IMG_SHAPE, BATCH_SIZE, CROP_SIZE, CROP, RESIZE
 from rxrx1_df import get_dataframe
 from utils import get_number_of_target_classes
 
@@ -38,7 +38,7 @@ def load_img_single(feature, x):
             image,
             size=CROP_SIZE
         )
-    else:
+    if RESIZE:
         image = tf.image.resize_images(
             image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]],
             method=ResizeMethod.AREA
@@ -103,19 +103,8 @@ def get_ds(
         map_func=load_img,
         num_parallel_calls=cpu_count()
     )
-    # ds = ds.apply(tf.contrib.data.parallel_interleave(
-    #     map_func=load_img,
-    #     cycle_length=AUTOTUNE
-    # ))
-    #
-    # ds = ds.interleave(
-    #     map_func=load_img,
-    #     cycle_length=AUTOTUNE,
-    #     num_parallel_calls=AUTOTUNE
-    # )
 
-    # add until new (good) data is downloaded
-    # ds = ds.apply(tf.data.experimental.ignore_errors())
+    ds = ds.apply(tf.data.experimental.ignore_errors())
 
     if perform_img_augmentation:
         ds = ds.map(
@@ -135,13 +124,6 @@ def get_ds(
     else:
         ds = ds.batch(BATCH_SIZE)
 
-    #     ds = ds.map(
-    #         map_func=normalise_image,
-    #         num_parallel_calls=AUTOTUNE
-    #     )
-    # ds = ds.batch(BATCH_SIZE)
-    # if not is_inference:
-    #     ds = ds.repeat()
     return ds
 
 

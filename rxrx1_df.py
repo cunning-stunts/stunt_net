@@ -39,6 +39,12 @@ def get_image_stats(stats_loc: str):
 
 
 def merge_by_channels_and_sites(df, is_test):
+    images_and_stats = df[['id_code', 'img_location', 'mean', 'std', 'median', 'min', 'max']].sort_values('img_location')
+    new_df = df[["well_column", "well_row", "cell_line", "batch_number", "site", "plate", "id_code", "well_type"]].drop_duplicates()
+    all_ids = new_df['id_code']
+
+    # df_list = [images_and_stats[images_and_stats['id_code'] == an_id] for an_id in all_ids]
+
     indexes = ["well_column", "well_row", "cell_line", "batch_number", "site", "plate", "id_code", "well_type"]
     if not is_test:
         indexes.append("sirna")

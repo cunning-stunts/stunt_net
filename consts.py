@@ -1,8 +1,9 @@
 INPUT_IMG_SHAPE = (512, 512, 1)
-OUTPUT_IMG_SHAPE = (224, 224, 6)
-CROP_SIZE = (224, 224, 1)
-CROP = False
-BATCH_SIZE = 32
+OUTPUT_IMG_SHAPE = (256, 256, 6)
+CROP_SIZE = (384, 384, 1)
+CROP = True
+RESIZE = True
+BATCH_SIZE = 16
 EPOCHS = 100
 HASH_BUCKET_SIZE = 200
 # https://www.quora.com/How-do-I-determine-the-number-of-dimensions-for-word-embedding
