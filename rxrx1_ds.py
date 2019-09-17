@@ -71,6 +71,36 @@ def normalise_image(x_dict, label):
     return x_dict, label
 
 
+def normalise_image2(x_dict, label):
+    img = x_dict["img"]
+    img = tf.cast(img, tf.dtypes.float64)
+
+    mean_keys = [x for x in x_dict.keys() if x.startswith("mean")]
+    std_keys = [x for x in x_dict.keys() if x.startswith("std")]
+    min_keys = [x for x in x_dict.keys() if x.startswith("min")]
+    max_keys = [x for x in x_dict.keys() if x.startswith("max")]
+    median_keys = [x for x in x_dict.keys() if x.startswith("median")]
+
+    img = tf.subtract(
+        img,
+        tf.convert_to_tensor([x_dict[x] for x in mean_keys])
+    )
+
+    img = tf.divide(
+        img,
+        tf.convert_to_tensor([x_dict[x] for x in std_keys])
+    )
+
+    [x_dict.pop(x) for x in std_keys]
+    [x_dict.pop(x) for x in mean_keys]
+    [x_dict.pop(x) for x in min_keys]
+    [x_dict.pop(x) for x in max_keys]
+    [x_dict.pop(x) for x in median_keys]
+
+    x_dict["img"] = img
+    return x_dict, label
+
+
 def get_ds(
         df, number_of_target_classes=None, training=False,
         shuffle_buffer_size=10_000,
@@ -127,7 +157,7 @@ def get_ds(
 
     if normalise:
         ds = ds.apply(tf.contrib.data.map_and_batch(
-            map_func=normalise_image,
+            map_func=normalise_image2,
             batch_size=BATCH_SIZE,
             num_parallel_calls=AUTOTUNE
         ))
