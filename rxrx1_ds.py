@@ -32,7 +32,10 @@ def load_img(feature, label):
 def load_img_single(feature, x):
     image = tf.io.decode_image(tf.io.read_file(feature[x]), channels=INPUT_IMG_SHAPE[-1])
     image.set_shape(INPUT_IMG_SHAPE)
-    image = tf.image.per_image_standardization(image)
+    # image = tf.image.per_image_standardization(image)
+    index = x[len('img_location_'): len(x)]
+    image = tf.dtypes.cast(image, tf.float16)
+    image = (image - tf.dtypes.cast(feature['mean_' + index], tf.float16)) / tf.dtypes.cast(feature['std_' + index], tf.float16)
     if CROP:
         image = tf.image.random_crop(
             image,
