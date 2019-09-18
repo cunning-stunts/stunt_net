@@ -13,6 +13,7 @@ SHUFFLE_BUFFER_SIZE = 487_344
 TENSORBOARD_UPDATE_FREQUENCY = 500  # setting this too low will slow training!
 RANDOM_SPLIT_SEED = 55
 TRAIN = True
+GPU = True
 # TRAIN = False
 # config = {
 #     "INPUT_IMG_SHAPE": INPUT_IMG_SHAPE,

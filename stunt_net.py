@@ -7,10 +7,14 @@ from tensorflow.python.keras.backend import set_session
 from default_config import DF_LOCATION
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # For CPU
 import pathlib
 import time
 
+from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, HIDDEN_UNITS, SHUFFLE_BUFFER_SIZE, \
+    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, TRAIN, GPU
+
+if not GPU:
+    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # For CPU
 import tensorflow as tf
 # from consts import config
 # wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
@@ -20,9 +24,6 @@ import pandas as pd
 
 tf.logging.set_verbosity(tf.logging.WARN)
 from sklearn.model_selection import train_test_split
-
-from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, HIDDEN_UNITS, SHUFFLE_BUFFER_SIZE, \
-    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, TRAIN
 from rxrx1_df import get_dataframe
 from rxrx1_ds import get_ds
 from utils import get_random_string, get_number_of_target_classes
@@ -47,13 +48,13 @@ def build_model(
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
     deepnwide = tf.keras.layers.concatenate([deep, wide], name="deepnwide")
     deepnwide = tf.keras.layers.Dense(
-            2_000, activation='relu', name='deep_n_wide_1',
-            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+        2_000, activation='relu', name='deep_n_wide_1',
+        kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
     )(deepnwide)
 
     img_net = tf.keras.applications.MobileNetV2(
         alpha=0.7,
-        #alpha=1.4,
+        # alpha=1.4,
         include_top=False,
         weights=None,
         input_tensor=inputs["img"],
