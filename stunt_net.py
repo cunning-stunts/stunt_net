@@ -1,57 +1,85 @@
 import os
-import sys
-
-from default_config import DF_LOCATION
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import pathlib
+import subprocess
+import sys
 import time
 
+# from consts import config
+# wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
+# from wandb.keras import WandbCallback
+import numpy as np
+import pandas as pd
 import tensorflow as tf
-
-tf.logging.set_verbosity(tf.logging.WARN)
 from sklearn.model_selection import train_test_split
 
-from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, HIDDEN_UNITS, SHUFFLE_BUFFER_SIZE, \
-    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, CONCAT_HIDDEN_UNITS
+from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, SHUFFLE_BUFFER_SIZE, \
+    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, TRAIN, REGULARIZATION, LR, \
+    DEEP_HIDDEN_UNITS, WIDE_NEURONS, CONV_TYPE
+from default_config import DF_LOCATION
 from rxrx1_df import get_dataframe
 from rxrx1_ds import get_ds
 from utils import get_random_string, get_number_of_target_classes
 
-# for rtx 20xx cards
-config = tf.ConfigProto()
-config.gpu_options.allow_growth = True
-sess = tf.Session(config=config)
 
-
-def wide_and_deep_classifier(
+def build_model(
         inputs, linear_feature_columns, dnn_feature_columns,
         number_of_target_classes
 ):
     deep = tf.keras.layers.DenseFeatures(dnn_feature_columns, name='deep_inputs')(inputs)
-    for layerno, numnodes in enumerate(HIDDEN_UNITS):
-        deep = tf.keras.layers.Dense(numnodes, activation='relu', name='dnn_{}'.format(layerno + 1))(deep)
+    for layerno, numnodes in enumerate(DEEP_HIDDEN_UNITS):
+        deep = tf.keras.layers.Dense(
+            numnodes, activation='relu', name='dnn_{}'.format(layerno + 1),
+            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=REGULARIZATION, l2=REGULARIZATION)
+        )(deep)
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
+    deepnwide = tf.keras.layers.concatenate([deep, wide], name="deepnwide")
+    deepnwide = tf.keras.layers.Dense(
+        WIDE_NEURONS, activation='relu', name='deep_n_wide_1',
+        kernel_regularizer=tf.keras.regularizers.l1_l2(l1=REGULARIZATION, l2=REGULARIZATION)
+    )(deepnwide)
 
-    img_net = tf.keras.applications.InceptionResNetV2(
-        include_top=False,
-        weights=None,
-        # weights='imagenet',
-        input_tensor=inputs["img"],
-        input_shape=None,
-        pooling="max"
-    )
+    if CONV_TYPE == "mn2":
+        img_net = tf.keras.applications.MobileNetV2(
+            alpha=0.7,
+            # alpha=1.4,
+            include_top=False,
+            weights=None,
+            input_tensor=inputs["img"],
+            input_shape=None,
+            pooling="max",
+        )
+    elif CONV_TYPE == "irn2":
+        img_net = tf.keras.applications.InceptionResNetV2(
+            include_top=False,
+            weights=None,
+            # weights='imagenet',
+            input_tensor=inputs["img"],
+            input_shape=None,
+            pooling="max"
+        )
+    else:
+        raise Exception(f"Unknown model: {CONV_TYPE}")
 
-    output = tf.keras.layers.concatenate([deep, wide, img_net.output], name='both')
+    flattened_convnet_output = tf.keras.layers.Flatten()(img_net.output)
+    output = tf.keras.layers.concatenate([deepnwide, flattened_convnet_output], name='both')
 
-    for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
-        output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
-    output = tf.keras.layers.Dense(number_of_target_classes, activation='softmax', name='pred')(output)
+    # for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
+    #     output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
+    output = tf.keras.layers.Dense(
+        number_of_target_classes, activation='softmax', name='pred'
+    )(output)
     model = tf.keras.Model(inputs, output)
+
+    # run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+    # run_metadata = tf.RunMetadata()
+
     model.compile(
-        optimizer='adam',
+        optimizer=tf.keras.optimizers.Adam(learning_rate=LR),
         loss='categorical_crossentropy',
-        metrics=['accuracy'])
+        metrics=['accuracy'],
+        # options=run_options,
+        # run_metadata=run_metadata
+    )
     return model
 
 
@@ -89,19 +117,22 @@ def get_features(ds):
     return inputs, sparse, real
 
 
-def train_model(model, train_ds, test_ds, run_id, steps_per_epoch, validation_steps_per_epoch):
-    model_path = os.path.join("models", run_id)
+def train_model(
+        model, train_ds, test_ds, steps_per_epoch, validation_steps_per_epoch, model_path, checkpoint_path
+):
     pathlib.Path(model_path).mkdir(parents=True, exist_ok=True)
     cp_callback = tf.keras.callbacks.ModelCheckpoint(
         monitor='val_acc',
-        filepath=os.path.join(model_path, 'model.cpt'),
+        filepath=checkpoint_path,
         save_weights_only=False,
         save_best_only=True,
         verbose=1,
         load_weights_on_restart=True
     )
-    callback = tf.keras.callbacks.TensorBoard(model_path, update_freq=TENSORBOARD_UPDATE_FREQUENCY)
-    callback.set_model(model)
+    tb_callback = tf.keras.callbacks.TensorBoard(
+        model_path, update_freq=TENSORBOARD_UPDATE_FREQUENCY, profile_batch=0
+    )
+    tb_callback.set_model(model)
 
     history = model.fit(
         train_ds,
@@ -109,7 +140,7 @@ def train_model(model, train_ds, test_ds, run_id, steps_per_epoch, validation_st
         epochs=EPOCHS,
         steps_per_epoch=steps_per_epoch,
         validation_steps=validation_steps_per_epoch,
-        callbacks=[cp_callback, callback]
+        callbacks=[cp_callback, tb_callback]
     )
     return history
 
@@ -122,13 +153,38 @@ def export_saved_model(run_id, model, feature_columns):
     })
 
 
-def run_inferrance():
-    # todo:
-    # load test dataset (similar to training data, but without SIRNA)
-    # run predict with our trained model
-    # write to csv
-    # upload to kaggle
-    pass
+def run_inference(model, path, run_id):
+    print("Loading model..")
+    try:
+        model.load_weights(path)
+    except Exception as e:
+        print(e)
+
+    print("Loading test df...")
+    test_df = get_dataframe(DF_LOCATION, is_test=True)
+    id_codes = test_df.pop("id_code")
+
+    test_ds = get_ds(
+        test_df, normalise=True, perform_img_augmentation=False, is_inference=True
+    )
+    print("Predicting...")
+    predictions = model.predict(test_ds)
+    print(f"Number of predictions: {len(predictions)}")
+    print(f"Number of id_codes: {len(id_codes.index)}")
+
+    classes = np.argmax(predictions, axis=1)
+    stacked = np.stack([id_codes, classes], axis=1)
+
+    print("Saving...")
+    predictions_df = pd.DataFrame(stacked, columns=["id_code", "sirna"])
+    predictions_df.to_csv("submission.csv", index=False)
+
+    print("Uploading to kaggle...")
+    subprocess.call([
+        "kaggle", "competitions", "submit", "-c",
+        "recursion-cellular-image-classification", "-f", "submission.csv", "-m", run_id
+    ])
+    print("Done!")
 
 
 def main(_run_id=None):
@@ -137,15 +193,14 @@ def main(_run_id=None):
 
     if _run_id is None:
         run_id = get_random_string(8)
+        load_model = False
     else:
+        print(f"Loading existing model: {_run_id}")
         run_id = _run_id
+        load_model = True
 
     # no need for ID
     df.pop("id_code")
-
-    # df.pop("site_num")
-    # df.pop("microscope_channel")
-    # df.pop("well_type")
 
     train_df, test_df = train_test_split(df, random_state=RANDOM_SPLIT_SEED)
     training_samples = len(train_df.index)
@@ -161,8 +216,8 @@ def main(_run_id=None):
     validation_samples: {validation_samples}
     validation_steps_per_epoch: {validation_steps_per_epoch}
     run_id: {run_id}
-    gpu: {tf.test.is_gpu_available()}
-    cuda: {tf.test.is_built_with_cuda()}
+    GPU: {tf.test.is_gpu_available()}
+    CUDA: {tf.test.is_built_with_cuda()}
     """)
 
     train_ds = get_ds(
@@ -176,16 +231,31 @@ def main(_run_id=None):
     )
 
     inputs, sparse, real = get_features(train_ds)
-    model = wide_and_deep_classifier(
+    model = build_model(
         inputs,
         linear_feature_columns=sparse.values(),
         dnn_feature_columns=real.values(),
         number_of_target_classes=number_of_target_classes
     )
 
-    train_model(model, train_ds, test_ds, run_id, training_steps_per_epoch, validation_steps_per_epoch)
-    run_inferrance()
-    export_saved_model(run_id, model, real)
+    model_path = os.path.join("models", run_id)
+    checkpoint_path = os.path.join(model_path, 'model.cpt')
+
+    if load_model:
+        try:
+            print("Loading model...")
+            model.load_weights(checkpoint_path)
+        except Exception as e:
+            print(e)
+
+    if TRAIN:
+        print("Training...")
+        train_model(
+            model, train_ds, test_ds, training_steps_per_epoch,
+            validation_steps_per_epoch, model_path, checkpoint_path
+        )
+    run_inference(model, checkpoint_path, run_id)
+    # export_saved_model(run_id, model, real)
     print("")
 
 

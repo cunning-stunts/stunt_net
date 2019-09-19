@@ -1,8 +1,8 @@
 import os
 
 import math
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from default_config import DF_LOCATION
 
@@ -20,36 +20,45 @@ def get_dataframe(ds_location, is_test=False):
     if os.path.exists(filename):
         print("Loading existing df!")
         return pd.read_pickle(filename)
-        # return pickle.load("df.pkl")
-    df = get_merged_df(ds_location, folder_name, is_test)
-    df = merge_by_channel(df)
+
+    df = get_merged_df(ds_location, folder_name, is_test).reset_index(drop=True)
+    df = merge_by_channels_and_sites(df, is_test)
     if not is_test:
         df["sirna"] = df["sirna"].astype(int)
     else:
-        df.pop("sirna")
+        df = df[df["well_type"] == "treatment"].reset_index(drop=True)
     df = df.replace(np.nan, '', regex=True)
     df.to_pickle(filename)
     return df
 
 
-def merge_by_channel(df):
-    df = df.sort_values('img_location')
-    img_loc_chan = pd.DataFrame(df.pop('microscope_channel'))
-    img_loc_chan['img_loc'] = df.pop('img_location')
-    df = df.drop_duplicates()
-    channels = img_loc_chan['microscope_channel'].drop_duplicates()
-    for i in channels:
-        channel_n = img_loc_chan.loc[img_loc_chan['microscope_channel'].isin([i])]
-        channel_n.rename(columns={'img_loc': f'img_loc_{i}'}, inplace=True)
-        df = df.reset_index(drop=True)
-        channel_n = channel_n.reset_index(drop=True)
-        df = pd.concat([df, channel_n[f'img_loc_{i}']], axis=1)
-    return df
+def get_image_stats(stats_loc: str):
+    filename = os.path.join(stats_loc, 'pixel_stats.csv')
+    stats_df = pd.read_csv(filename)
+    return stats_df
+
+
+def merge_by_channels_and_sites(df, is_test):
+    indexes = ["well_column", "well_row", "cell_line", "batch_number", "plate", "id_code", "well_type"]
+    if not is_test:
+        indexes.append("sirna")
+    pivoted = df.pivot_table(
+        index=indexes,
+        columns=["site", "channel"],
+        values=["img_location", 'mean', 'std', 'median', 'min', 'max'],
+        aggfunc='first'
+    )
+
+    pivoted.columns = ['_'.join(str(s).strip() for s in col if s) for col in pivoted.columns]
+    pivoted = pivoted.reset_index(drop=False)
+
+    return pivoted
 
 
 def get_merged_df(ds_location, dataset_type, is_test):
     sirna_df = pd.read_csv(os.path.join(ds_location, f"{dataset_type}.csv"))
     controls_df = pd.read_csv(os.path.join(ds_location, f"{dataset_type}_controls.csv"))
+    pixel_stats = get_image_stats(ds_location)
     data = []
     tests = [os.path.join(ds_location, dataset_type, t) for t in os.listdir(os.path.join(ds_location, dataset_type))]
     for t in tests:
@@ -70,20 +79,29 @@ def get_merged_df(ds_location, dataset_type, is_test):
                 cell_line = test.split("-")[0]
                 batch_number = int(test.split("-")[1])
                 plate = int(str(get_filename(p)).replace("Plate", ""))
+                id_code = f"{cell_line}-{batch_number:02d}_{plate}_{well_column}{well_row:02d}"
 
                 data.append({
                     "well_column": well_column,
                     "well_row": well_row,
-                    "site_num": site,
-                    "microscope_channel": microscope_channel,
+                    "site": site,
+                    "channel": microscope_channel,
                     "cell_line": cell_line,
                     "batch_number": batch_number,
                     "plate": plate,
                     "img_location": i,
-                    "id_code": f"{cell_line}-{batch_number:02d}_{plate}_{well_column}{well_row:02d}"
+                    "id_code": id_code,
                 })
 
-    return add_sirna(sirna_df, pd.DataFrame(data), controls_df, is_test)
+    data_df = pd.DataFrame(data)
+    data_df = pd.merge(
+        data_df,
+        pixel_stats[["id_code", 'site', 'channel', 'mean', 'std', 'median', 'min', 'max']],
+        on=["id_code", 'site', 'channel'],
+        how="left"
+    )
+
+    return add_sirna(sirna_df, data_df, controls_df, is_test)
 
 
 def add_sirna(sirna_df, metadata_df, controls_df, is_test):
@@ -97,6 +115,7 @@ def add_sirna(sirna_df, metadata_df, controls_df, is_test):
         controls_df[["id_code", "well_type", "sirna"]],
         on="id_code", how="left"
     )
+    control_merged["well_type"].fillna("treatment", inplace=True)
     if not is_test:
         set_sirna(control_merged, sirnas)
     return control_merged
@@ -116,14 +135,13 @@ def set_sirna(control_merged, sirnas):
 
 
 if __name__ == '__main__':
-
     cheat_dict = {}
     train_df = get_dataframe(DF_LOCATION, is_test=False)
-    for (cell_line, plate, batch_number), df_g \
-            in train_df.groupby(["cell_line", "plate", "batch_number"]):
-        without_controls = df_g[df_g["well_type"] == ""]
-        unique_sirnas = without_controls["sirna"].unique()
-        cheat_dict[f"{cell_line}_{batch_number}_{plate}"] = unique_sirnas.tolist()
-        print("")
+    # for (cell_line, plate, batch_number), df_g \
+    #         in train_df.groupby(["cell_line", "plate", "batch_number"]):
+    #     without_controls = df_g[df_g["well_type"] == ""]
+    #     unique_sirnas = without_controls["sirna"].unique()
+    #     cheat_dict[f"{cell_line}_{batch_number}_{plate}"] = unique_sirnas.tolist()
+    #     print("")
     test_df = get_dataframe(DF_LOCATION, is_test=True)
     print("")

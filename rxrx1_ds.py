@@ -1,41 +1,44 @@
 import os
-
-from tensorflow.python.data.experimental import AUTOTUNE
-
-from default_config import DF_LOCATION
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+from multiprocessing import cpu_count
 
 import cv2
-import tensorflow as tf
-
-tf.logging.set_verbosity(tf.logging.WARN)
 import numpy as np
+import tensorflow as tf
+from tensorflow.python.data.experimental import AUTOTUNE
 from tensorflow.python.ops.image_ops_impl import convert_image_dtype, ResizeMethod
 
 from consts import INPUT_IMG_SHAPE, OUTPUT_IMG_SHAPE, BATCH_SIZE, CROP_SIZE, CROP
+from default_config import DF_LOCATION
 from rxrx1_df import get_dataframe
 from utils import get_number_of_target_classes
 
 
-def load_img(feature, label):
-    final_tensor = None
-    channels = range(1, 7)
-    for channel in channels:
-        img_path_title = f'img_loc_{channel}'
-        path = feature[img_path_title]
-        image = tf.io.read_file(path)
-        image = tf.io.decode_image(image, channels=INPUT_IMG_SHAPE[-1])
-        image.set_shape(INPUT_IMG_SHAPE)
-        if final_tensor is None:
-            final_tensor = image
-        else:
-            final_tensor = tf.concat([final_tensor, image], axis=2)
+# import wandb
+# from consts import config
+# wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
 
-    for i in channels:
-        del feature[f"img_loc_{i}"]
-    feature["img"] = final_tensor
+
+def load_img(feature, label):
+    img_keys = [x for x in feature.keys() if x.startswith("img_")]
+    feature["img"] = tf.concat([load_img_single(feature, x) for x in img_keys], axis=2)
+    [feature.pop(x) for x in img_keys]
     return feature, label
+
+
+def load_img_single(feature, x):
+    image = tf.io.decode_image(tf.io.read_file(feature[x]), channels=INPUT_IMG_SHAPE[-1])
+    image.set_shape(INPUT_IMG_SHAPE)
+    if CROP:
+        image = tf.image.random_crop(
+            image,
+            size=CROP_SIZE
+        )
+    else:
+        image = tf.image.resize_images(
+            image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]],
+            method=ResizeMethod.AREA
+        )
+    return image
 
 
 def add_gausian_noise(x_new, std_dev):
@@ -60,61 +63,111 @@ def img_augmentation(x_dict, label):
 def normalise_image(x_dict, label):
     image = x_dict["img"]
     image = tf.image.per_image_standardization(image)
-    if not CROP:
-        image = tf.image.resize_images(
-            image, [OUTPUT_IMG_SHAPE[0], OUTPUT_IMG_SHAPE[1]], method=ResizeMethod.AREA
-        )
     x_dict["img"] = image
     return x_dict, label
 
 
-def crop_image(x_dict, label):
-    x_dict["img"] = tf.image.random_crop(
-        x_dict["img"],
-        size=CROP_SIZE
+def normalise_image2(x_dict, label):
+    img = x_dict["img"]
+    img = tf.cast(img, tf.dtypes.float64)
+
+    mean_keys = [x for x in x_dict.keys() if x.startswith("mean")]
+    std_keys = [x for x in x_dict.keys() if x.startswith("std")]
+    min_keys = [x for x in x_dict.keys() if x.startswith("min")]
+    max_keys = [x for x in x_dict.keys() if x.startswith("max")]
+    median_keys = [x for x in x_dict.keys() if x.startswith("median")]
+
+    img = tf.subtract(
+        img,
+        tf.convert_to_tensor([x_dict[x] for x in mean_keys])
     )
+
+    img = tf.divide(
+        img,
+        tf.convert_to_tensor([x_dict[x] for x in std_keys])
+    )
+
+    [x_dict.pop(x) for x in std_keys]
+    [x_dict.pop(x) for x in mean_keys]
+    [x_dict.pop(x) for x in min_keys]
+    [x_dict.pop(x) for x in max_keys]
+    [x_dict.pop(x) for x in median_keys]
+
+    x_dict["img"] = img
     return x_dict, label
 
 
 def get_ds(
-        df, number_of_target_classes, training=False,
+        df, number_of_target_classes=None, training=False,
         shuffle_buffer_size=10_000,
         shuffle=None, normalise=True,
-        perform_img_augmentation=None
+        perform_img_augmentation=None,
+        is_inference=False
 ):
     if shuffle is None:
         shuffle = True if training else False
     if perform_img_augmentation is None:
         perform_img_augmentation = True if training else False
-    one_hot = tf.one_hot(df.pop("sirna"), number_of_target_classes)
+    if is_inference:
+        one_hot = [0] * len(df.index)
+    else:
+        if number_of_target_classes is None:
+            raise Exception("number_of_target_classes must be specified if generating training dataset")
+        one_hot = tf.one_hot(df.pop("sirna"), number_of_target_classes)
 
     ds = tf.data.Dataset.from_tensor_slices((dict(df), one_hot))
+    ds = ds.prefetch(int(BATCH_SIZE * 2.0))
+
+    if shuffle:
+        print(f"Filling shuffle buffer {shuffle_buffer_size}, this may take some time...")
+        if not is_inference:
+            ds = ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=shuffle_buffer_size))
+        else:
+            ds = ds.shuffle(buffer_size=shuffle_buffer_size)
     ds = ds.map(
         map_func=load_img,
-        num_parallel_calls=AUTOTUNE
+        num_parallel_calls=cpu_count()
     )
-    if CROP:
-        ds = ds.map(
-            map_func=crop_image,
-            num_parallel_calls=AUTOTUNE
-        )
+    # ds = ds.apply(tf.contrib.data.parallel_interleave(
+    #     map_func=load_img,
+    #     cycle_length=AUTOTUNE
+    # ))
+    #
+    # ds = ds.interleave(
+    #     map_func=load_img,
+    #     cycle_length=AUTOTUNE,
+    #     num_parallel_calls=AUTOTUNE
+    # )
+
+    # add until new (good) data is downloaded
+    # ds = ds.apply(tf.data.experimental.ignore_errors())
+
     if perform_img_augmentation:
         ds = ds.map(
             map_func=img_augmentation,
-            num_parallel_calls=AUTOTUNE
+            num_parallel_calls=cpu_count()
         )
-    if shuffle:
-        print(f"Filling shuffle buffer {shuffle_buffer_size}, this may take some time...")
-        ds = ds.shuffle(buffer_size=shuffle_buffer_size)
+
+    # todo:
+    # perform augmentation of column features
 
     if normalise:
-        ds = ds.map(
-            map_func=normalise_image,
+        ds = ds.apply(tf.contrib.data.map_and_batch(
+            map_func=normalise_image2,
+            batch_size=BATCH_SIZE,
             num_parallel_calls=AUTOTUNE
-        )
-    ds = ds.batch(BATCH_SIZE)
-    ds = ds.prefetch(AUTOTUNE)
-    return ds.repeat()
+        ))
+    else:
+        ds = ds.batch(BATCH_SIZE)
+
+    #     ds = ds.map(
+    #         map_func=normalise_image,
+    #         num_parallel_calls=AUTOTUNE
+    #     )
+    # ds = ds.batch(BATCH_SIZE)
+    # if not is_inference:
+    #     ds = ds.repeat()
+    return ds
 
 
 def show_ds(ds):
@@ -127,12 +180,7 @@ def show_ds(ds):
                 x1, y1 = sess.run([x, y])
                 imgs = x1["img"]
                 for img, y2 in zip(imgs, y1):  # batch size
-                    #
-                    # BEAR IN MIND
-                    # THE ACTUAL CLASS ID IS 1..N
-                    # BUT ARGMAX WILL RETURN 0..N-1
-                    #
-                    argmax = np.argmax(y2) + 1
+                    argmax = np.argmax(y2)
                     print(f"y2: {argmax}")
                     stacked = []
                     for i in range(0, 6, 3):
@@ -150,18 +198,19 @@ def show_ds(ds):
 
 
 def load_and_show_ds():
-    _df = get_dataframe(DF_LOCATION, is_test=False)
-    number_of_classes = get_number_of_target_classes(_df)
-    _ds = get_ds(
-        _df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=True
+    _test_df = get_dataframe(DF_LOCATION, is_test=True)
+    _test_ds = get_ds(
+        _test_df, normalise=False, perform_img_augmentation=False,
+        is_inference=True
     )
-    show_ds(_ds)
+    # show_ds(_test_ds)
 
-    _df = get_dataframe(DF_LOCATION, is_test=True)
-    _ds = get_ds(
-        _df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=False
+    _train_df = get_dataframe(DF_LOCATION, is_test=False)
+    number_of_classes = get_number_of_target_classes(_train_df)
+    _train_ds = get_ds(
+        _train_df, number_of_target_classes=number_of_classes, normalise=False, perform_img_augmentation=True
     )
-    show_ds(_ds)
+    # show_ds(_train_ds)
 
 
 if __name__ == '__main__':
