@@ -38,23 +38,23 @@ def build_model(
         kernel_regularizer=tf.keras.regularizers.l1_l2(l1=REGULARIZATION, l2=REGULARIZATION)
     )(deepnwide)
 
-    img_net = tf.keras.applications.MobileNetV2(
-        alpha=0.7,
-        # alpha=1.4,
-        include_top=False,
-        weights=None,
-        input_tensor=inputs["img"],
-        input_shape=None,
-        pooling="max",
-    )
-    # img_net = tf.keras.applications.InceptionResNetV2(
+    # img_net = tf.keras.applications.MobileNetV2(
+    #     alpha=0.7,
+    #     # alpha=1.4,
     #     include_top=False,
     #     weights=None,
-    #     # weights='imagenet',
     #     input_tensor=inputs["img"],
     #     input_shape=None,
-    #     pooling="max"
+    #     pooling="max",
     # )
+    img_net = tf.keras.applications.InceptionResNetV2(
+        include_top=False,
+        weights=None,
+        # weights='imagenet',
+        input_tensor=inputs["img"],
+        input_shape=None,
+        pooling="max"
+    )
 
     flattened_convnet_output = tf.keras.layers.Flatten()(img_net.output)
     output = tf.keras.layers.concatenate([deepnwide, flattened_convnet_output], name='both')
