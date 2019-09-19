@@ -1,38 +1,24 @@
 import os
+import pathlib
 import subprocess
 import sys
-
-from tensorflow.python.keras.backend import set_session
-
-from default_config import DF_LOCATION
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-import pathlib
 import time
 
-from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, HIDDEN_UNITS, SHUFFLE_BUFFER_SIZE, \
-    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, TRAIN, GPU
-
-if not GPU:
-    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # For CPU
-import tensorflow as tf
 # from consts import config
 # wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
 # from wandb.keras import WandbCallback
 import numpy as np
 import pandas as pd
-
-tf.logging.set_verbosity(tf.logging.WARN)
+import tensorflow as tf
 from sklearn.model_selection import train_test_split
+
+from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, SHUFFLE_BUFFER_SIZE, \
+    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, TRAIN, REGULARIZATION, LR, \
+    DEEP_HIDDEN_UNITS, WIDE_NEURONS
+from default_config import DF_LOCATION
 from rxrx1_df import get_dataframe
 from rxrx1_ds import get_ds
 from utils import get_random_string, get_number_of_target_classes
-
-# for rtx 20xx cards
-config = tf.ConfigProto()
-config.gpu_options.allow_growth = True
-sess = tf.Session(config=config)
-set_session(sess)
 
 
 def build_model(
@@ -40,16 +26,16 @@ def build_model(
         number_of_target_classes
 ):
     deep = tf.keras.layers.DenseFeatures(dnn_feature_columns, name='deep_inputs')(inputs)
-    for layerno, numnodes in enumerate(HIDDEN_UNITS):
+    for layerno, numnodes in enumerate(DEEP_HIDDEN_UNITS):
         deep = tf.keras.layers.Dense(
             numnodes, activation='relu', name='dnn_{}'.format(layerno + 1),
-            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+            kernel_regularizer=tf.keras.regularizers.l1_l2(l1=REGULARIZATION, l2=REGULARIZATION)
         )(deep)
     wide = tf.keras.layers.DenseFeatures(linear_feature_columns, name='wide_inputs')(inputs)
     deepnwide = tf.keras.layers.concatenate([deep, wide], name="deepnwide")
     deepnwide = tf.keras.layers.Dense(
-        2_000, activation='relu', name='deep_n_wide_1',
-        kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+        WIDE_NEURONS, activation='relu', name='deep_n_wide_1',
+        kernel_regularizer=tf.keras.regularizers.l1_l2(l1=REGULARIZATION, l2=REGULARIZATION)
     )(deepnwide)
 
     img_net = tf.keras.applications.MobileNetV2(
@@ -84,7 +70,7 @@ def build_model(
     # run_metadata = tf.RunMetadata()
 
     model.compile(
-        optimizer='adam',
+        optimizer=tf.keras.optimizers.Adam(learning_rate=LR),
         loss='categorical_crossentropy',
         metrics=['accuracy'],
         # options=run_options,

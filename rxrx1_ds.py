@@ -1,25 +1,21 @@
 import os
 from multiprocessing import cpu_count
 
-from tensorflow.python.data.experimental import AUTOTUNE
-
-from default_config import DF_LOCATION
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-
 import cv2
-import tensorflow as tf
-# import wandb
-# from consts import config
-# wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
-
-tf.logging.set_verbosity(tf.logging.WARN)
 import numpy as np
+import tensorflow as tf
+from tensorflow.python.data.experimental import AUTOTUNE
 from tensorflow.python.ops.image_ops_impl import convert_image_dtype, ResizeMethod
 
 from consts import INPUT_IMG_SHAPE, OUTPUT_IMG_SHAPE, BATCH_SIZE, CROP_SIZE, CROP
+from default_config import DF_LOCATION
 from rxrx1_df import get_dataframe
 from utils import get_number_of_target_classes
+
+
+# import wandb
+# from consts import config
+# wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
 
 
 def load_img(feature, label):
