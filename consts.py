@@ -30,6 +30,9 @@ DEEP_HIDDEN_UNITS = [6, 6]
 REGULARIZATION = 0.05
 LR = 0.01
 
+# net type
+CONV_TYPE = "irn2"
+
 # batch config
 BATCH_SIZE = 32
 

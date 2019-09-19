@@ -14,7 +14,7 @@ from sklearn.model_selection import train_test_split
 
 from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, SHUFFLE_BUFFER_SIZE, \
     TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, TRAIN, REGULARIZATION, LR, \
-    DEEP_HIDDEN_UNITS, WIDE_NEURONS
+    DEEP_HIDDEN_UNITS, WIDE_NEURONS, CONV_TYPE
 from default_config import DF_LOCATION
 from rxrx1_df import get_dataframe
 from rxrx1_ds import get_ds
@@ -38,23 +38,27 @@ def build_model(
         kernel_regularizer=tf.keras.regularizers.l1_l2(l1=REGULARIZATION, l2=REGULARIZATION)
     )(deepnwide)
 
-    # img_net = tf.keras.applications.MobileNetV2(
-    #     alpha=0.7,
-    #     # alpha=1.4,
-    #     include_top=False,
-    #     weights=None,
-    #     input_tensor=inputs["img"],
-    #     input_shape=None,
-    #     pooling="max",
-    # )
-    img_net = tf.keras.applications.InceptionResNetV2(
-        include_top=False,
-        weights=None,
-        # weights='imagenet',
-        input_tensor=inputs["img"],
-        input_shape=None,
-        pooling="max"
-    )
+    if CONV_TYPE == "mn2":
+        img_net = tf.keras.applications.MobileNetV2(
+            alpha=0.7,
+            # alpha=1.4,
+            include_top=False,
+            weights=None,
+            input_tensor=inputs["img"],
+            input_shape=None,
+            pooling="max",
+        )
+    elif CONV_TYPE == "irn2":
+        img_net = tf.keras.applications.InceptionResNetV2(
+            include_top=False,
+            weights=None,
+            # weights='imagenet',
+            input_tensor=inputs["img"],
+            input_shape=None,
+            pooling="max"
+        )
+    else:
+        raise Exception(f"Unknown model: {CONV_TYPE}")
 
     flattened_convnet_output = tf.keras.layers.Flatten()(img_net.output)
     output = tf.keras.layers.concatenate([deepnwide, flattened_convnet_output], name='both')
