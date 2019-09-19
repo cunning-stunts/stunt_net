@@ -86,7 +86,7 @@ def build_model(
 def get_features(ds):
     real = {name: tf.feature_column.numeric_column(name)
             for name, dtype in ds.output_types[0].items()
-            if name != "img" and dtype.name in ["int64"]}
+            if name != "img" and "int" in dtype.name}
     sparse = {name: tf.feature_column.categorical_column_with_hash_bucket(name, hash_bucket_size=HASH_BUCKET_SIZE)
               for name, dtype in ds.output_types[0].items()
               if dtype.name in ["string"]}
