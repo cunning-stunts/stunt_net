@@ -19,18 +19,20 @@ CROP_SIZE = (128, 128, 12)
 CROP = False
 
 # nn config
-HASH_BUCKET_SIZE = 10
-WIDE_NEURONS = 10
-WIDE_DEEP_NEURONS = 6
+HASH_BUCKET_SIZE = 100
+WIDE_NEURONS = 1000
+WIDE_DEEP_NEURONS = 10
 # https://www.quora.com/How-do-I-determine-the-number-of-dimensions-for-word-embedding
 EMBEDDING_DIMS = int(HASH_BUCKET_SIZE ** 0.25) + 1
 DEEP_HIDDEN_UNITS = [6, 6]
 
 # net parameters
 REGULARIZATION = 0.05
-LR = 0.01
+LR = 0.001
 
 # net type
+# irn2 == inceptionresnet2
+# mn2 == mobilenet2
 CONV_TYPE = "irn2"
 
 # batch config
