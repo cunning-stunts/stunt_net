@@ -22,9 +22,9 @@ tf.logging.set_verbosity(tf.logging.WARN)
 from sklearn.model_selection import train_test_split
 
 from consts import BATCH_SIZE, EPOCHS, EMBEDDING_DIMS, HASH_BUCKET_SIZE, HIDDEN_UNITS, SHUFFLE_BUFFER_SIZE, \
-    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, TRAIN
+    TENSORBOARD_UPDATE_FREQUENCY, OUTPUT_IMG_SHAPE, CROP, CROP_SIZE, RANDOM_SPLIT_SEED, TRAIN, TRAIN_CONV
 from rxrx1_df import get_dataframe
-from rxrx1_ds import get_ds
+from rxrx1_ds import get_ds, get_conv_ds
 from utils import get_random_string, get_number_of_target_classes
 
 # for rtx 20xx cards
@@ -35,8 +35,8 @@ set_session(sess)
 
 
 def build_model(
-        inputs, linear_feature_columns, dnn_feature_columns,
-        number_of_target_classes
+        inputs, img_net: tf.keras.Model,
+        linear_feature_columns, dnn_feature_columns, number_of_target_classes
 ):
     deep = tf.keras.layers.DenseFeatures(dnn_feature_columns, name='deep_inputs')(inputs)
     for layerno, numnodes in enumerate(HIDDEN_UNITS):
@@ -51,15 +51,15 @@ def build_model(
             kernel_regularizer=tf.keras.regularizers.l1_l2(l1=0.01, l2=0.01)
     )(deepnwide)
 
-    img_net = tf.keras.applications.MobileNetV2(
-        alpha=0.7,
-        #alpha=1.4,
-        include_top=False,
-        weights=None,
-        input_tensor=inputs["img"],
-        input_shape=None,
-        pooling="max",
-    )
+    # img_net = tf.keras.applications.MobileNetV2(
+    #     alpha=0.7,
+    #     #alpha=1.4,
+    #     include_top=False,
+    #     weights=None,
+    #     input_tensor=inputs["img"],
+    #     input_shape=None,
+    #     pooling="max",
+    # )
     # img_net = tf.keras.applications.InceptionResNetV2(
     #     include_top=False,
     #     weights=None,
@@ -69,8 +69,18 @@ def build_model(
     #     pooling="max"
     # )
 
-    flattened_convnet_output = tf.keras.layers.Flatten()(img_net.output)
-    output = tf.keras.layers.concatenate([deepnwide, flattened_convnet_output], name='both')
+    img_net.trainable(False)
+    img_net.layers.pop()
+
+    img_net_output1 = img_net(inputs["img1"])
+    img_net_output2 = img_net(inputs['img2'])
+
+    flattened_convnet_output_1 = tf.keras.layers.Flatten()(img_net_output1)
+    flattened_convnet_output_2 = tf.keras.layers.Flatten()(img_net_output2)
+    output = tf.keras.layers.concatenate(
+        [deepnwide, flattened_convnet_output_1, flattened_convnet_output_2],
+        name='both'
+     )
 
     # for layerno, numnodes in enumerate(CONCAT_HIDDEN_UNITS):
     #     output = tf.keras.layers.Dense(numnodes, activation='relu', name=f'cnn_{layerno + 1}')(output)
@@ -154,6 +164,36 @@ def train_model(
     return history
 
 
+def train_conv(
+        model: tf.keras.Model, train: tf.data.Dataset, test: tf.data.Dataset,
+        model_path, train_steps, test_steps
+):
+    checkpoint_path = os.path.join(model_path, 'conv_model.cpt')
+    pathlib.Path(model_path).mkdir(parents=True, exist_ok=True)
+    cp_callback = tf.keras.callbacks.ModelCheckpoint(
+        monitor='val_acc',
+        filepath=checkpoint_path,
+        save_weights_only=False,
+        save_best_only=True,
+        verbose=1,
+        load_weights_on_restart=True
+    )
+    tb_callback = tf.keras.callbacks.TensorBoard(
+        model_path, update_freq=TENSORBOARD_UPDATE_FREQUENCY, profile_batch=0
+    )
+    tb_callback.set_model(model)
+
+    model.fit(
+        train,
+        validation_data=test,
+        epochs=EPOCHS,
+        callbacks=[cp_callback, tb_callback],
+        steps_per_epoch=train_steps,
+        validation_steps=test_steps
+    )
+    return model
+
+
 def export_saved_model(run_id, model, feature_columns):
     export_dir = os.path.join('models', run_id, f'model_{time.strftime("%Y%m%d-%H%M%S")}')
     print('Exporting to {}'.format(export_dir))
@@ -230,6 +270,37 @@ def main(_run_id=None):
     CUDA: {tf.test.is_built_with_cuda()}
     """)
 
+    model_path = os.path.join("models", run_id)
+    checkpoint_path = os.path.join(model_path, 'model.cpt')
+
+    conv_train_ds = get_conv_ds(train_df)
+    conv_test_ds = get_conv_ds(test_df, is_train=False)
+
+    classes = df['sirna'].drop_duplicates().count()
+    img_net = tf.keras.applications.MobileNetV2(
+        weights=None,
+        input_shape=OUTPUT_IMG_SHAPE,
+        classes=classes
+    )
+    img_net.compile(
+        optimizer='adam',
+        loss='categorical_crossentropy',
+        metrics=['accuracy']
+    )
+
+    if TRAIN_CONV:
+        img_net = train_conv(
+            img_net, conv_train_ds, conv_test_ds, model_path,
+            train_steps=training_steps_per_epoch,
+            test_steps=validation_steps_per_epoch
+        )
+
+    try:
+        print("Loading model...")
+        img_net.load_weights(os.path.join(model_path, 'conv_model.cpt'))
+    except Exception as e:
+        print(e)
+
     train_ds = get_ds(
         train_df, number_of_target_classes=number_of_target_classes,
         training=True, shuffle_buffer_size=SHUFFLE_BUFFER_SIZE,
@@ -242,14 +313,11 @@ def main(_run_id=None):
 
     inputs, sparse, real = get_features(train_ds)
     model = build_model(
-        inputs,
+        inputs, img_net=img_net,
         linear_feature_columns=sparse.values(),
         dnn_feature_columns=real.values(),
         number_of_target_classes=number_of_target_classes
     )
-
-    model_path = os.path.join("models", run_id)
-    checkpoint_path = os.path.join(model_path, 'model.cpt')
 
     if load_model:
         try:

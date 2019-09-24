@@ -9,6 +9,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import cv2
 import tensorflow as tf
+import pandas as pd
 # import wandb
 # from consts import config
 # wandb.init(project="rxrx1", config=config, sync_tensorboard=True)
@@ -17,25 +18,32 @@ tf.logging.set_verbosity(tf.logging.WARN)
 import numpy as np
 from tensorflow.python.ops.image_ops_impl import convert_image_dtype, ResizeMethod
 
-from consts import INPUT_IMG_SHAPE, OUTPUT_IMG_SHAPE, BATCH_SIZE, CROP_SIZE, CROP
+from consts import INPUT_IMG_SHAPE, OUTPUT_IMG_SHAPE, BATCH_SIZE, CROP_SIZE, \
+    CROP, SHUFFLE_BUFFER_SIZE
 from rxrx1_df import get_dataframe
 from utils import get_number_of_target_classes
+
+
+def load_conv_img(feature, label):
+    img_keys = [x for x in feature.keys() if x.startswith("img_")]
+    output_img = tf.concat([load_img_single(feature, x) for x in img_keys], axis=2)
+    return output_img, label
 
 
 def load_img(feature, label):
     img_keys = [x for x in feature.keys() if x.startswith("img_")]
     feature["img"] = tf.concat([load_img_single(feature, x) for x in img_keys], axis=2)
     [feature.pop(x) for x in img_keys]
-    return feature, label
+    return feature["img"], label
 
 
 def load_img_single(feature, x):
     image = tf.io.decode_image(tf.io.read_file(feature[x]), channels=INPUT_IMG_SHAPE[-1])
     image.set_shape(INPUT_IMG_SHAPE)
-    # image = tf.image.per_image_standardization(image)
-    index = x[len('img_location_'): len(x)]
-    image = tf.dtypes.cast(image, tf.float16)
-    image = (image - tf.dtypes.cast(feature['mean_' + index], tf.float16)) / tf.dtypes.cast(feature['std_' + index], tf.float16)
+    image = tf.image.per_image_standardization(image)
+    # index = x[len('img_location_'): len(x)]
+    # image = tf.dtypes.cast(image, tf.float16)
+    # image = (image - tf.dtypes.cast(feature['mean_' + index], tf.float16)) / tf.dtypes.cast(feature['std_' + index], tf.float16)
     if CROP:
         image = tf.image.random_crop(
             image,
@@ -58,12 +66,12 @@ def add_gausian_noise(x_new, std_dev):
 
 def img_augmentation(x_dict, label):
     x = x_dict["img"]
-    x_new = tf.image.random_brightness(x, 0.1)
-    x_new = tf.image.random_contrast(x_new, 0.8, 1.2)
-    x_new = tf.image.random_flip_left_right(x_new)
-    x_new = tf.image.random_flip_up_down(x_new)
-    x_new = add_gausian_noise(x_new, std_dev=0.01)
-    x_dict["img"] = x_new
+    # x_new = tf.image.random_brightness(x, 0.1)
+    # x_new = tf.image.random_contrast(x_new, 0.8, 1.2)
+    x = tf.image.random_flip_left_right(x)
+    x = tf.image.random_flip_up_down(x)
+    # x = add_gausian_noise(x, std_dev=0.01)
+    x_dict["img"] = x
 
     return x_dict, label
 
@@ -106,16 +114,6 @@ def get_ds(
         map_func=load_img,
         num_parallel_calls=cpu_count()
     )
-    # ds = ds.apply(tf.contrib.data.parallel_interleave(
-    #     map_func=load_img,
-    #     cycle_length=AUTOTUNE
-    # ))
-    #
-    # ds = ds.interleave(
-    #     map_func=load_img,
-    #     cycle_length=AUTOTUNE,
-    #     num_parallel_calls=AUTOTUNE
-    # )
 
     # add until new (good) data is downloaded
     # ds = ds.apply(tf.data.experimental.ignore_errors())
@@ -145,6 +143,25 @@ def get_ds(
     # ds = ds.batch(BATCH_SIZE)
     # if not is_inference:
     #     ds = ds.repeat()
+    return ds
+
+
+def get_conv_ds(df: pd.DataFrame, is_train=True):
+    number_of_target_classes = df['sirna'].drop_duplicates().count()
+    one_hot = tf.one_hot(df["sirna"], number_of_target_classes)
+    img_names = ['img_location_' + str(i) for i in range(1, 7)]
+    df = df[img_names]
+    ds = tf.data.Dataset.from_tensor_slices((dict(df), one_hot))
+    ds = ds.prefetch(int(BATCH_SIZE * 2.0))
+
+    if is_train:
+        print(f"Filling shuffle buffer {SHUFFLE_BUFFER_SIZE}, this may take some time...")
+        ds = ds.apply(tf.data.experimental.shuffle_and_repeat(buffer_size=SHUFFLE_BUFFER_SIZE))
+    ds = ds.map(
+        map_func=load_conv_img,
+        num_parallel_calls=cpu_count()
+    )
+    ds = ds.batch(BATCH_SIZE)
     return ds
 
 

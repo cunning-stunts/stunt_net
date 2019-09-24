@@ -14,3 +14,4 @@ TENSORBOARD_UPDATE_FREQUENCY = 500  # setting this too low will slow training!
 RANDOM_SPLIT_SEED = 55
 TRAIN = True
 # TRAIN = False
+TRAIN_CONV = False
